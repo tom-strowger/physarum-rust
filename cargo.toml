@@ -1,0 +1,14 @@
+[package]
+name = "physarum"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+wgpu = "*"
+nanorand = "*"
+winit = "*"
+log = "*"
+async-executor = "*"
+env_logger = "*"
+pollster = "*"
+bytemuck = "*"
