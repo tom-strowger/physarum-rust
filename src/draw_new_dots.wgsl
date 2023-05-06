@@ -15,7 +15,7 @@ struct SimParams {
 };
 
 @group(0) @binding(0) var<uniform> params : SimParams;
-@group(0) @binding(1) var chemo_in : texture_2d<f32>;
+@group(0) @binding(1) var<storage, read> agents : array<Particle>;
 
 @vertex
 fn main_vs(
@@ -31,10 +31,12 @@ fn main_vs(
     //     position.x * sin(angle) + position.y * cos(angle)
     // );
 
-    // let particle_pos = agents[index].pos;
+    let particle_pos = agents[index].pos;
 
-    let pos = (vertex_position) * vec2(1280.0, 800.0) * 2.0;
-    // let pos = (vertex_position + particle_pos) * 2.0 + vec2(-1.0, -1.0);
+    var offset = vec2<f32>(-0.5, -0.5);
+
+    let pos = (vertex_position + ((particle_pos) + offset)* 2.0);
+    // let pos = (vertex_position + particle_pos) + vec2(-0.5, -0.5);
 
     return vec4<f32>(pos, 0.0, 1.0);
 }
@@ -43,12 +45,7 @@ fn main_vs(
 fn main_fs(
   @builtin(position) pos : vec4<f32>
 ) -> @location(0) vec4<f32> {
-  
-  let x = u32( pos.x );
-  let y = u32( pos.y );
 
-  let index = vec2<u32>(x, y);
-
-  let texture_value = textureLoad(chemo_in, index, 0);
-  return texture_value;
+  var color = vec3<f32>( 1.0, 1.0, 1.0 );
+  return vec4<f32>(color, 1.0);
 }

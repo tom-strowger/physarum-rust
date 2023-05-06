@@ -11,14 +11,14 @@ Stages
 Input: Agents
 Output: new dots
 
-1. Deposit - render pipeline
+1. Deposit - compute pipeline
 Input: new dots
 Input: Chemo
 Output: Chemo
 
 after, swap Chemo A & B
 
-2. Diffuse - render pipeline
+2. Diffuse - compute pipeline
 Input: Chemo
 Output: Chemo
 
