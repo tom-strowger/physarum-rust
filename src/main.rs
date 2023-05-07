@@ -10,7 +10,7 @@ mod framework;
 
 // number of boid particles to simulate
 
-const NUM_PARTICLES: u32 = 1 << 18;
+const NUM_PARTICLES: u32 = 1 << 20;
 
 // number of single-particle calculations (invocations) in each gpu work group
 
@@ -34,7 +34,6 @@ struct Example {
     compute_pipeline: wgpu::ComputePipeline,
     
     render_pipeline: wgpu::RenderPipeline,
-    work_group_count: u32,
     frame_num: usize,
 
     width: u32,
@@ -91,9 +90,9 @@ impl framework::Example for Example {
 
         let mut sim_param_data = [
             15.0, // sense angle
-            3.0,     // sense offset
+            4.0,     // sense offset
             1.0,   // step
-            25.0,   // rotate angle
+            35.0,   // rotate angle
             5.0,     // max chemo
             1.0,    // deposit chemo
             0.12,    // decay chemo
@@ -289,13 +288,13 @@ impl framework::Example for Example {
             address_mode_u: wgpu::AddressMode::Repeat,
             address_mode_v: wgpu::AddressMode::Repeat,
             address_mode_w: wgpu::AddressMode::Repeat,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Linear,
             lod_min_clamp: 0.0,
             lod_max_clamp: 100.0,
             compare: None,
-            anisotropy_clamp: 1,
+            anisotropy_clamp: 10,
             border_color: None,
         });
 
@@ -323,7 +322,7 @@ impl framework::Example for Example {
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Texture {
                             sample_type: wgpu::TextureSampleType::Float{
-                                filterable: false,
+                                filterable: true,
                             },
                             view_dimension: wgpu::TextureViewDimension::D2,
                             multisampled: false
@@ -348,7 +347,7 @@ impl framework::Example for Example {
                         binding: 3,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Sampler(
-                            wgpu::SamplerBindingType::NonFiltering
+                            wgpu::SamplerBindingType::Filtering
                         ),
                         count: None,
                     },
@@ -393,7 +392,7 @@ impl framework::Example for Example {
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Texture {
                             sample_type: wgpu::TextureSampleType::Float{
-                                filterable: false,
+                                filterable: true,
                             },
                             view_dimension: wgpu::TextureViewDimension::D2,
                             multisampled: false
@@ -418,7 +417,7 @@ impl framework::Example for Example {
                         binding: 4,
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::Sampler(
-                            wgpu::SamplerBindingType::NonFiltering
+                            wgpu::SamplerBindingType::Filtering
                         ),
                         count: None,
                     },
@@ -747,12 +746,7 @@ impl framework::Example for Example {
             }));
         }
 
-        // calculates number of work groups from PARTICLES_PER_GROUP constant
-        let work_group_count =
-            ((NUM_PARTICLES as f32) / (PARTICLES_PER_GROUP as f32)).ceil() as u32;
-
         // returns Example struct and No encoder commands
-
         Example {
             draw_positions_bind_groups,
             deposit_bind_group,
@@ -770,7 +764,6 @@ impl framework::Example for Example {
             compute_pipeline,
 
             render_pipeline,
-            work_group_count,
             frame_num: 0,
             width: 100,
             height: 100,

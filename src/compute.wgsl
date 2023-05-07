@@ -21,6 +21,7 @@ struct SimParams {
 @group(0) @binding(1) var<storage, read> agents_in : array<Particle>;
 @group(0) @binding(2) var chemo_texture : texture_2d<f32>;
 @group(0) @binding(3) var<storage, read_write> agents_out : array<Particle>;
+@group(0) @binding(4) var texture_sampler: sampler;
 
 // @todo This could be improved 
 fn rand(co: vec2<f32>)->f32{
@@ -31,11 +32,10 @@ fn rand(co: vec2<f32>)->f32{
 fn sample_texture(tex: texture_2d<f32>, pos: vec2<f32>)->vec4<f32>{
   let tex_size = textureDimensions(tex);
   let texel_size = vec2<f32>(1.0) / vec2<f32>(tex_size);
-  let texel_pos = pos;
-
-  let i_texel_pos = vec2<i32>(i32(texel_pos.x), i32(texel_pos.y));
-
-  return textureLoad(tex, i_texel_pos, 0);
+  // It seemed like the sampling was off so I added the -0.5, -0.5 which fixed it.
+  // There is probably a bug somewhere
+  let texel_pos = pos * texel_size -  vec2(0.5, 0.5 );
+  return textureSampleLevel(tex, texture_sampler, texel_pos, 0.0);
 }
 
 @compute

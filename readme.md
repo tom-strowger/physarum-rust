@@ -1,32 +1,37 @@
 
+# Physarum simulation
 
+## Data:
+- Agents (positions + headings).  Access by index.  Double-buffered
+- Chemo 2d texture.  Accessed by x,y position. Double-buffered
+- New dots 2d texture representing the agent positions with a dot drawn at each.
 
-Data:
-- Agents (positions + headings).  Indexed
-- Chemo 2d texture
-
-Stages
+## Stages
 
 1. Draw positions - render pipeline
-Input: Agents
-Output: new dots
+   - Input: Agents[A]
+   - Output: new dots 2d texture
 
-1. Deposit - compute pipeline
-Input: new dots
-Input: Chemo
-Output: Chemo
+2. Deposit - compute pipeline
+   - Input: new dots
+   - Input: Chemo[0]
+   - Output: Chemo[1]
 
-after, swap Chemo A & B
+3. Diffuse - compute pipeline
+   - Input: Chemo[1]
+   - Output: Chemo[0]
 
-2. Diffuse - compute pipeline
-Input: Chemo
-Output: Chemo
+4. Update agents - compute pipeline
+   - Input: Agents[A]
+   - Input: Chemo[0]
+   - Output: Agents[B]
 
-after, swap Chemo A & B
+swap A & B each frame
 
-3. Update agents - compute pipeline
-Input: Agents
-Input: Chemo
-Output: Agents
 
-after, swap Agents A & B
+## Todo:
+- Add an input 2d texture which can be used to weight towards regions etc. Ideas:
+  - A layer which modifies the decay (e.g. for topology)
+  - A layer which has adds a constant chemo to an area (cornflake)
+  - A blocking layer which prevents any chemo in an area (no-go)
+- Have groups within the population and different attractant areas/points for each.
