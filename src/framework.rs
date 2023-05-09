@@ -96,7 +96,10 @@ async fn setup<E: Example>(title: &str) -> Setup {
 
     let event_loop = EventLoop::new();
     let mut builder = winit::window::WindowBuilder::new();
-    builder = builder.with_title(title);
+    builder = builder.with_title(title)
+        .with_inner_size(winit::dpi::LogicalSize::new(1280, 800))
+        .with_resizable(false);
+
     #[cfg(windows_OFF)] // TODO
     {
         use winit::platform::windows::WindowBuilderExtWindows;
@@ -236,19 +239,6 @@ async fn setup<E: Example>(title: &str) -> Setup {
         )
         .await
         .expect("Unable to find a suitable GPU adapter!");
-
-    // Set the window size to the desired size
-    size.width = 1280;
-    size.height = 800;
-
-    // print the size
-    println!("Window size: {:?}", size);
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        window.set_inner_size(winit::dpi::LogicalSize::new(size.width, size.height));
-        window.set_resizable(false);
-    }
 
     Setup {
         window,

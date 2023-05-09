@@ -3,18 +3,15 @@
 
 use nanorand::{Rng, WyRand};
 use std::{borrow::Cow, mem};
-use wgpu::util::DeviceExt;
+use wgpu::{util::DeviceExt, Buffer};
+use winit::{
+    event::{self, WindowEvent}};
+use image::{ImageBuffer, Rgba};
+use chrono::Utc;
+use bytemuck::{Pod, Zeroable, NoUninit};
 
 #[path = "./framework.rs"]
 mod framework;
-
-// number of boid particles to simulate
-
-const NUM_PARTICLES: u32 = 1 << 20;
-
-// number of single-particle calculations (invocations) in each gpu work group
-
-const PARTICLES_PER_GROUP: u32 = 64;
 
 /// Example struct holds references to wgpu resources and frame persistent data
 struct Example {
@@ -27,6 +24,7 @@ struct Example {
     particle_buffers: Vec<wgpu::Buffer>,
     vertices_buffer: wgpu::Buffer,
     new_dots_texture: wgpu::Texture,
+    chemo_textures: Vec<wgpu::Texture>,
 
     new_dots_pipeline: wgpu::RenderPipeline,
     deposit_pipeline: wgpu::ComputePipeline,
@@ -39,8 +37,46 @@ struct Example {
     width: u32,
     height: u32,
 
-    sim_param_data: Vec<f32>,
+    running: bool,
+    save: bool,
+
+    sim_param_data: SimulationParameters,
 }
+// this is Pod
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+struct SimulationParameters
+{
+    sense_angle: f32,
+    sense_offset: f32,
+    step: f32,
+    rotate_angle: f32,
+    max_chemo: f32,
+    deposit_chemo: f32,
+    decay_chemo: f32,
+    width: u32,
+    height: u32,
+    num_particles: u32,
+}
+
+impl SimulationParameters
+{
+    fn serialize(& self) -> String
+    {
+        return format!("sa{:.2}_so{:.2}_step{:.2}_ra{:.2}_decay{:.2}_N{}",
+            self.sense_angle,
+            self.sense_offset,
+            self.step,
+            self.rotate_angle,
+            self.decay_chemo,
+            self.num_particles
+        ).to_string();
+    }
+}
+
+unsafe impl Zeroable for SimulationParameters {}
+unsafe impl Pod for SimulationParameters {}
+// unsafe impl NoUninit for SimulationParameters {}
 
 impl framework::Example for Example {
     fn required_limits() -> wgpu::Limits {
@@ -88,21 +124,36 @@ impl framework::Example for Example {
 
         // buffer for simulation parameters uniform
 
-        let mut sim_param_data = [
-            15.0, // sense angle
-            4.0,     // sense offset
-            1.0,   // step
-            35.0,   // rotate angle
-            5.0,     // max chemo
-            1.0,    // deposit chemo
-            0.12,    // decay chemo
-            1280.0 * 2.0,   // width
-            800.0 * 2.0,    // height
-        ]
-        .to_vec();
+        // a pleasing textural set
+        // let mut sim_param_data = [
+        //     15.0, // sense angle
+        //     3.0,     // sense offset
+        //     3.0,   // step
+        //     5.0,   // rotate angle
+        //     5.0,     // max chemo
+        //     1.0,    // deposit chemo
+        //     0.10,    // decay chemo
+        //     1280.0 * 2.0,   // width
+        //     800.0 * 2.0,    // height
+        // ]
+
+        let sim_param_data = SimulationParameters
+        {
+            sense_angle: 15.0,
+            sense_offset: 4.0,
+            step: 3.5,
+            rotate_angle: 18.0,
+            max_chemo: 5.0,
+            deposit_chemo: 1.0,
+            decay_chemo: 0.10,
+            width: 1280 * 2,
+            height: 800 * 2,
+            num_particles: 1 << 20,
+        };
+        
         let sim_param_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Simulation Parameter Buffer"),
-            contents: bytemuck::cast_slice(&sim_param_data),
+            contents: bytemuck::bytes_of(&sim_param_data),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -121,7 +172,8 @@ impl framework::Example for Example {
             format: wgpu::TextureFormat::Rgba8Unorm,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | 
                 wgpu::TextureUsages::RENDER_ATTACHMENT | 
-                wgpu::TextureUsages::STORAGE_BINDING,
+                wgpu::TextureUsages::STORAGE_BINDING |
+                wgpu::TextureUsages::COPY_SRC,
             label: None,
             view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
         };
@@ -164,7 +216,7 @@ impl framework::Example for Example {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
                             min_binding_size: wgpu::BufferSize::new(
-                                (sim_param_data.len() * mem::size_of::<f32>()) as _,
+                                mem::size_of::<SimulationParameters>() as _,
                             ),
                         },
                         count: None,
@@ -177,7 +229,7 @@ impl framework::Example for Example {
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
-                            min_binding_size: wgpu::BufferSize::new((NUM_PARTICLES * 16) as _),
+                            min_binding_size: wgpu::BufferSize::new((sim_param_data.num_particles * 16) as _),
                         },
                         count: None,
                     }
@@ -198,7 +250,7 @@ impl framework::Example for Example {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
                             min_binding_size: wgpu::BufferSize::new(
-                                (sim_param_data.len() * mem::size_of::<f32>()) as _,
+                                mem::size_of::<SimulationParameters>() as _,
                             ),
                         },
                         count: None,
@@ -233,7 +285,7 @@ impl framework::Example for Example {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
                             min_binding_size: wgpu::BufferSize::new(
-                                (sim_param_data.len() * mem::size_of::<f32>()) as _,
+                                mem::size_of::<SimulationParameters>() as _,
                             ),
                         },
                         count: None,
@@ -310,7 +362,7 @@ impl framework::Example for Example {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
                             min_binding_size: wgpu::BufferSize::new(
-                                (sim_param_data.len() * mem::size_of::<f32>()) as _,
+                                mem::size_of::<SimulationParameters>() as _,
                             ),
                         },
                         count: None,
@@ -368,7 +420,7 @@ impl framework::Example for Example {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
                             min_binding_size: wgpu::BufferSize::new(
-                                (sim_param_data.len() * mem::size_of::<f32>()) as _,
+                                mem::size_of::<SimulationParameters>() as _,
                             ),
                         },
                         count: None,
@@ -381,7 +433,7 @@ impl framework::Example for Example {
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
-                            min_binding_size: wgpu::BufferSize::new((NUM_PARTICLES * 16) as _),
+                            min_binding_size: wgpu::BufferSize::new((sim_param_data.num_particles * 16) as _),
                         },
                         count: None,
                     },
@@ -407,7 +459,7 @@ impl framework::Example for Example {
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
                             has_dynamic_offset: false,
-                            min_binding_size: wgpu::BufferSize::new((NUM_PARTICLES * 16) as _),
+                            min_binding_size: wgpu::BufferSize::new((sim_param_data.num_particles * 16) as _),
                         },
                         count: None,
                     },
@@ -560,7 +612,7 @@ impl framework::Example for Example {
 
         // buffer for all particles data of type [(posx,posy,velx,vely),...]
 
-        let mut initial_particle_data = vec![0.0f32; (4 * NUM_PARTICLES) as usize];
+        let mut initial_particle_data = vec![0.0f32; (4 * sim_param_data.num_particles) as usize];
         let mut rng = WyRand::new_seed(42);
         let mut unif = || rng.generate::<f32>(); // Generate a num (0, 1)
         for particle_instance_chunk in initial_particle_data.chunks_mut(4) {
@@ -757,6 +809,7 @@ impl framework::Example for Example {
             particle_buffers,
             vertices_buffer,
             new_dots_texture,
+            chemo_textures,
 
             new_dots_pipeline,
             deposit_pipeline,
@@ -767,13 +820,46 @@ impl framework::Example for Example {
             frame_num: 0,
             width: 100,
             height: 100,
+
+            running: true,
+            save: false,
+
             sim_param_data,
         }
     }
 
     /// update is called for any WindowEvent not handled by the framework
-    fn update(&mut self, _event: winit::event::WindowEvent) {
+    fn update(&mut self, event: winit::event::WindowEvent) {
         //empty
+
+        match event
+        {
+            WindowEvent::KeyboardInput {
+                input:
+                    event::KeyboardInput {
+                        virtual_keycode: Some(event::VirtualKeyCode::Space),
+                        state: event::ElementState::Pressed,
+                        ..
+                    },
+                ..
+            } => {
+                // Toggle pause
+                self.running = !self.running;
+            },
+            WindowEvent::KeyboardInput {
+                input:
+                    event::KeyboardInput {
+                        virtual_keycode: Some(event::VirtualKeyCode::S),
+                        state: event::ElementState::Pressed,
+                        ..
+                    },
+                ..
+            } => {
+                // Toggle pause
+                self.save = true;
+            },
+            _ => {}
+        }
     }
 
     /// resize is called on WindowEvent::Resized events
@@ -820,84 +906,88 @@ impl framework::Example for Example {
         let mut command_encoder =
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        // render to new_dots_texture
+        if self.running
         {
-            // create a texture view from new_dots_texture
-            let new_dots_texture_view = self.new_dots_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-            // create render pass descriptor and its color attachments
-            let color_attachments = [Some(wgpu::RenderPassColorAttachment {
-                view: &new_dots_texture_view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    // Not clearing here in order to test wgpu's zero texture initialization on a surface texture.
-                    // Users should avoid loading uninitialized memory since this can cause additional overhead.
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                    store: true,
-                },
-            })];
-            let new_dots_render_pass_descriptor = wgpu::RenderPassDescriptor {
-                label: None,
-                color_attachments: &color_attachments,
-                depth_stencil_attachment: None,
-            };
-
-            command_encoder.push_debug_group("render dots");
+            // render to new_dots_texture
             {
-                // render pass
-                let mut rpass = command_encoder.begin_render_pass(&new_dots_render_pass_descriptor);
-                rpass.set_pipeline(&self.new_dots_pipeline);
+                // create a texture view from new_dots_texture
+                let new_dots_texture_view = self.new_dots_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+                // create render pass descriptor and its color attachments
+                let color_attachments = [Some(wgpu::RenderPassColorAttachment {
+                    view: &new_dots_texture_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        // Not clearing here in order to test wgpu's zero texture initialization on a surface texture.
+                        // Users should avoid loading uninitialized memory since this can cause additional overhead.
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: true,
+                    },
+                })];
+                let new_dots_render_pass_descriptor = wgpu::RenderPassDescriptor {
+                    label: None,
+                    color_attachments: &color_attachments,
+                    depth_stencil_attachment: None,
+                };
+
+                command_encoder.push_debug_group("render dots");
+                {
+                    // render pass
+                    let mut rpass = command_encoder.begin_render_pass(&new_dots_render_pass_descriptor);
+                    rpass.set_pipeline(&self.new_dots_pipeline);
+                    
+                    // render dst particles
+                    rpass.set_vertex_buffer(0, self.particle_buffers[(self.frame_num + 1) % 2].slice(..));
+                    // the three instance-local vertices
+                    rpass.set_vertex_buffer(1, self.vertices_buffer.slice(..));
+
+                    rpass.set_bind_group(0, &self.draw_positions_bind_groups[self.frame_num % 2], &[]);
+                    
+                    rpass.draw(0..6, 0..self.sim_param_data.num_particles);
+
+                }
+                command_encoder.pop_debug_group();
                 
-                // render dst particles
-                rpass.set_vertex_buffer(0, self.particle_buffers[(self.frame_num + 1) % 2].slice(..));
-                // the three instance-local vertices
-                rpass.set_vertex_buffer(1, self.vertices_buffer.slice(..));
 
-                rpass.set_bind_group(0, &self.draw_positions_bind_groups[self.frame_num % 2], &[]);
+                let work_group_size = 8;
+
+                command_encoder.push_debug_group("deposit chemo");
+                {
+                    // compute pass
+                    let mut cpass =
+                        command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
+                    cpass.set_pipeline(&self.deposit_pipeline);
+                    cpass.set_bind_group(0, &self.deposit_bind_group, &[]);
+                    cpass.dispatch_workgroups(self.width/work_group_size, self.height/work_group_size, 1);
+                }
+                command_encoder.pop_debug_group();
+
+
+                command_encoder.push_debug_group("diffuse chemo");
+                {
+                    // compute pass
+                    let mut cpass =
+                        command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
+                    cpass.set_pipeline(&self.diffuse_pipeline);
+                    cpass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+                    cpass.dispatch_workgroups(self.width/work_group_size, self.height/work_group_size, 1);
+                }
+                command_encoder.pop_debug_group();
+
+
+                command_encoder.push_debug_group("update agent positions");
+                {
+                    // compute pass
+                    let mut cpass =
+                        command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
+                    cpass.set_pipeline(&self.compute_pipeline);
+                    cpass.set_bind_group(0, &self.update_bind_groups[self.frame_num % 2], &[]);
+                    cpass.dispatch_workgroups(self.sim_param_data.num_particles/64, 1, 1);
+                }
+                command_encoder.pop_debug_group();
+
+            }
                 
-                rpass.draw(0..6, 0..NUM_PARTICLES);
-
-            }
-            command_encoder.pop_debug_group();
-            
-
-            let work_group_size = 8;
-
-            command_encoder.push_debug_group("deposit chemo");
-            {
-                // compute pass
-                let mut cpass =
-                    command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
-                cpass.set_pipeline(&self.deposit_pipeline);
-                cpass.set_bind_group(0, &self.deposit_bind_group, &[]);
-                cpass.dispatch_workgroups(self.width/work_group_size, self.height/work_group_size, 1);
-            }
-            command_encoder.pop_debug_group();
-
-
-            command_encoder.push_debug_group("diffuse chemo");
-            {
-                // compute pass
-                let mut cpass =
-                    command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
-                cpass.set_pipeline(&self.diffuse_pipeline);
-                cpass.set_bind_group(0, &self.diffuse_bind_group, &[]);
-                cpass.dispatch_workgroups(self.width/work_group_size, self.height/work_group_size, 1);
-            }
-            command_encoder.pop_debug_group();
-
-
-            command_encoder.push_debug_group("update agent positions");
-            {
-                // compute pass
-                let mut cpass =
-                    command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
-                cpass.set_pipeline(&self.compute_pipeline);
-                cpass.set_bind_group(0, &self.update_bind_groups[self.frame_num % 2], &[]);
-                cpass.dispatch_workgroups(NUM_PARTICLES/64, 1, 1);
-            }
-            command_encoder.pop_debug_group();
-
         }
 
         // render to view
@@ -938,6 +1028,69 @@ impl framework::Example for Example {
 
         }
 
+        // save the chemo texture to an image
+        if self.save
+        {
+            self.save = false;
+
+            // get the textue bound to the second slot in self.render_bind_group
+
+            let mut buffer_data = vec![0.0f32; (4 * self.width * self.height) as usize];
+            let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(&"buffer data"),
+                contents: bytemuck::cast_slice(&buffer_data),
+                usage: wgpu::BufferUsages::MAP_READ
+                    | wgpu::BufferUsages::COPY_DST,
+            });
+
+
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+            encoder.copy_texture_to_buffer(
+                self.chemo_textures[0].as_image_copy(),
+                wgpu::ImageCopyBuffer{
+                    buffer: &buffer,
+                    layout: wgpu::ImageDataLayout {
+                        offset: 0,
+                        bytes_per_row: Some(4 * self.width),
+                        rows_per_image: Some(self.height),
+                    },
+                },
+                wgpu::Extent3d {
+                    width: self.width,
+                    height: self.height,
+                    depth_or_array_layers: 1,
+                },
+            );
+            queue.submit(Some(encoder.finish()));
+
+            let buffer_slice = buffer.slice(..);
+
+            // map the buffer, wait until the callback is called
+            
+            let width = self.width;
+            let height = self.height;
+
+            buffer_slice.map_async(wgpu::MapMode::Read,|slice| {
+                if let Err(_) = slice {
+                    panic!("failed to map buffer");
+                }
+             });
+            device.poll(wgpu::Maintain::Wait);
+
+            let data = buffer_slice.get_mapped_range();
+            let img = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(width, height, data.to_vec()).unwrap();
+
+            // get the date time
+            let now = Utc::now();
+            img.save(format!("chemo_{}_{}.png",
+                now.format("%Y%m%d_%H%M"),
+                self.sim_param_data.serialize())).unwrap();
+            
+            drop(data);
+
+            buffer.unmap();
+        }
+
         // update frame count
         self.frame_num += 1;
 
@@ -948,5 +1101,5 @@ impl framework::Example for Example {
 
 /// run example
 fn main() {
-    framework::run::<Example>("boids");
+    framework::run::<Example>("Physarum");
 }
