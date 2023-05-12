@@ -88,7 +88,7 @@ struct OffscreenCanvasSetup {
     bitmap_renderer: ImageBitmapRenderingContext,
 }
 
-async fn setup<E: Example>(title: &str) -> Setup {
+async fn setup<E: Example>(title: &str, logical_size: (u32, u32)) -> Setup {
     #[cfg(not(target_arch = "wasm32"))]
     {
         env_logger::init();
@@ -97,7 +97,7 @@ async fn setup<E: Example>(title: &str) -> Setup {
     let event_loop = EventLoop::new();
     let mut builder = winit::window::WindowBuilder::new();
     builder = builder.with_title(title)
-        .with_inner_size(winit::dpi::LogicalSize::new(1280, 800))
+        .with_inner_size(winit::dpi::LogicalSize::new(logical_size.0, logical_size.1))
         .with_resizable(false);
 
     #[cfg(windows_OFF)] // TODO
@@ -445,8 +445,8 @@ impl Spawner {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn run<E: Example>(title: &str) {
-    let setup = pollster::block_on(setup::<E>(title));
+pub fn run<E: Example>(title: &str, logical_size: (u32, u32)) {
+    let setup = pollster::block_on(setup::<E>(title, logical_size));
     start::<E>(setup);
 }
 

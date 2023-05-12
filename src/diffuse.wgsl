@@ -11,8 +11,8 @@ struct SimParams {
   max_chemo : f32,
   deposit_chemo : f32,
   decay_chemo : f32,
-  sim_width : f32,
-  sim_height : f32,
+  sim_width : u32,
+  sim_height : u32,
 };
 
 @group(0) @binding(0) var<uniform> params : SimParams;
@@ -63,11 +63,6 @@ fn main(@builtin(global_invocation_id) global_invocation_id: vec3<u32>) {
   let y = global_invocation_id.y;
   let z = global_invocation_id.z;
   let index = vec2<u32>(x, y);
-
-  // var chemo = textureLoad(chemo_in, index, 0);
-
-  // textureStore(chemo_out, index, vec4<f32>(chemo.r, chemo.g, chemo.b, 1.0));
-
 
   // Blur calculations
   var color = vec3<f32>(0.0, 0.0, 0.0);

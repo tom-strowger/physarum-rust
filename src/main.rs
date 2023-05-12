@@ -13,6 +13,9 @@ use bytemuck::{Pod, Zeroable, NoUninit};
 #[path = "./framework.rs"]
 mod framework;
 
+// define a global frame rate limit
+const FRAME_RATE_LIMIT: Option<u32> = Some(120);
+
 /// Example struct holds references to wgpu resources and frame persistent data
 struct Example {
     draw_positions_bind_groups: Vec<wgpu::BindGroup>,
@@ -22,9 +25,10 @@ struct Example {
     render_bind_group: wgpu::BindGroup,
 
     particle_buffers: Vec<wgpu::Buffer>,
-    vertices_buffer: wgpu::Buffer,
+    new_dots_vertices_buffer: wgpu::Buffer,
     new_dots_texture: wgpu::Texture,
     chemo_textures: Vec<wgpu::Texture>,
+    whole_view_vertices_buffer: wgpu::Buffer,
 
     new_dots_pipeline: wgpu::RenderPipeline,
     deposit_pipeline: wgpu::ComputePipeline,
@@ -39,6 +43,9 @@ struct Example {
 
     running: bool,
     save: bool,
+
+    // next time to render
+    next_render_time: std::time::Instant,
 
     sim_param_data: SimulationParameters,
 }
@@ -97,6 +104,19 @@ impl framework::Example for Example {
         device: &wgpu::Device,
         _queue: &wgpu::Queue,
     ) -> Self {
+        
+        
+        let width = 1280;
+        let height = 800;
+
+        let dpi_factor = config.width as f32 / width as f32;
+
+
+        let width = 1280;
+        let height = 800;
+
+        let dpi_factor = config.width as f32 / width as f32;
+
         let deposit_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None,
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("deposit.wgsl"))),
@@ -119,24 +139,23 @@ impl framework::Example for Example {
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("draw.wgsl"))),
         });
 
-        let width = 1280;
-        let height = 800;
-
         // buffer for simulation parameters uniform
 
         // a pleasing textural set
-        // let mut sim_param_data = [
-        //     15.0, // sense angle
-        //     3.0,     // sense offset
-        //     3.0,   // step
-        //     5.0,   // rotate angle
-        //     5.0,     // max chemo
-        //     1.0,    // deposit chemo
-        //     0.10,    // decay chemo
-        //     1280.0 * 2.0,   // width
-        //     800.0 * 2.0,    // height
-        // ]
-
+        // let sim_param_data = SimulationParameters
+        // {
+        //     sense_angle: 15.0,
+        //     sense_offset: 3.0,
+        //     step: 3.0,
+        //     rotate_angle: 5.0,
+        //     max_chemo: 5.0,
+        //     deposit_chemo: 1.0,
+        //     decay_chemo: 0.10,
+        //     width: config.width,
+        //     height: config.height,
+        //     num_particles: 1 << 20,
+        // };
+        
         let sim_param_data = SimulationParameters
         {
             sense_angle: 15.0,
@@ -146,8 +165,8 @@ impl framework::Example for Example {
             max_chemo: 5.0,
             deposit_chemo: 1.0,
             decay_chemo: 0.10,
-            width: 1280 * 2,
-            height: 800 * 2,
+            width: config.width,
+            height: config.height,
             num_particles: 1 << 20,
         };
         
@@ -157,13 +176,10 @@ impl framework::Example for Example {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        // Enough space must be allocated to account for scaling
-        let screen_to_texture_ratio = 2;
-
         let chemo_texture_descriptor = wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
-                width: width * screen_to_texture_ratio,
-                height: height * screen_to_texture_ratio,
+                width: config.width,
+                height: config.height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -185,8 +201,8 @@ impl framework::Example for Example {
 
         let new_dots_texture_descriptor = wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
-                width: width * screen_to_texture_ratio,
-                height: height * screen_to_texture_ratio,
+                width: config.width,
+                height: config.height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -602,9 +618,21 @@ impl framework::Example for Example {
 
         // buffer for the 2x triangle vertices of each instance, together making a square
 
-        let vertex_buffer_data = [-1.0f32, -1.0, 1.0, -1.0, 1.0, 1.0,
+        let mut vertex_buffer_data = [-1.0f32, -1.0, 1.0, -1.0, 1.0, 1.0,
                                             -1.0, -1.0, -1.0, 1.0, 1.0, 1.0 ];
-        let vertices_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+
+        let whole_view_vertices_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::bytes_of(&vertex_buffer_data),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
+
+        for vertex in vertex_buffer_data.chunks_mut(2) {
+            vertex[0] /= config.width as f32;
+            vertex[1] /= config.height as f32;
+        }
+
+        let new_dots_vertices_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::bytes_of(&vertex_buffer_data),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
@@ -736,9 +764,11 @@ impl framework::Example for Example {
             label: None,
         });
 
-        let mut render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &render_bind_group_layout,
             entries: &[
+
+                // params
                 wgpu::BindGroupEntry {
                     binding: 0,
                     resource: sim_param_buffer.as_entire_binding(),
@@ -807,9 +837,10 @@ impl framework::Example for Example {
             render_bind_group,
 
             particle_buffers,
-            vertices_buffer,
+            new_dots_vertices_buffer,
             new_dots_texture,
             chemo_textures,
+            whole_view_vertices_buffer,
 
             new_dots_pipeline,
             deposit_pipeline,
@@ -818,11 +849,13 @@ impl framework::Example for Example {
 
             render_pipeline,
             frame_num: 0,
-            width: 100,
-            height: 100,
+            width: config.width,
+            height: config.height,
 
             running: true,
             save: false,
+
+            next_render_time: std::time::Instant::now(),
 
             sim_param_data,
         }
@@ -866,29 +899,14 @@ impl framework::Example for Example {
     fn resize(
         &mut self,
         sc_desc: &wgpu::SurfaceConfiguration,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
     ) {
         let w = sc_desc.width;
         let h = sc_desc.height;
 
         self.width = w;
         self.height = h;
-
-
-        let mut new_data = [-1.0f32, -1.0, 1.0, -1.0, 1.0, 1.0,
-                                     -1.0, -1.0, -1.0, 1.0, 1.0, 1.0 ];
-
-        for vertex in new_data.chunks_mut(2) {
-            vertex[0] /= w as f32;
-            vertex[1] /= h as f32;
-        }
-
-        queue.write_buffer(
-            &self.vertices_buffer,
-            0, // Offset in the buffer to start writing to
-            bytemuck::bytes_of(&new_data)
-        );
     }
 
     /// render is called each frame, dispatching compute groups proportional
@@ -906,88 +924,98 @@ impl framework::Example for Example {
         let mut command_encoder =
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        if self.running
+        let time_to_render = FRAME_RATE_LIMIT.is_none() || std::time::Instant::now() >= self.next_render_time;
+
+        if time_to_render
         {
-            // render to new_dots_texture
-            {
-                // create a texture view from new_dots_texture
-                let new_dots_texture_view = self.new_dots_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-                // create render pass descriptor and its color attachments
-                let color_attachments = [Some(wgpu::RenderPassColorAttachment {
-                    view: &new_dots_texture_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        // Not clearing here in order to test wgpu's zero texture initialization on a surface texture.
-                        // Users should avoid loading uninitialized memory since this can cause additional overhead.
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: true,
-                    },
-                })];
-                let new_dots_render_pass_descriptor = wgpu::RenderPassDescriptor {
-                    label: None,
-                    color_attachments: &color_attachments,
-                    depth_stencil_attachment: None,
-                };
-
-                command_encoder.push_debug_group("render dots");
-                {
-                    // render pass
-                    let mut rpass = command_encoder.begin_render_pass(&new_dots_render_pass_descriptor);
-                    rpass.set_pipeline(&self.new_dots_pipeline);
-                    
-                    // render dst particles
-                    rpass.set_vertex_buffer(0, self.particle_buffers[(self.frame_num + 1) % 2].slice(..));
-                    // the three instance-local vertices
-                    rpass.set_vertex_buffer(1, self.vertices_buffer.slice(..));
-
-                    rpass.set_bind_group(0, &self.draw_positions_bind_groups[self.frame_num % 2], &[]);
-                    
-                    rpass.draw(0..6, 0..self.sim_param_data.num_particles);
-
-                }
-                command_encoder.pop_debug_group();
-                
-
-                let work_group_size = 8;
-
-                command_encoder.push_debug_group("deposit chemo");
-                {
-                    // compute pass
-                    let mut cpass =
-                        command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
-                    cpass.set_pipeline(&self.deposit_pipeline);
-                    cpass.set_bind_group(0, &self.deposit_bind_group, &[]);
-                    cpass.dispatch_workgroups(self.width/work_group_size, self.height/work_group_size, 1);
-                }
-                command_encoder.pop_debug_group();
-
-
-                command_encoder.push_debug_group("diffuse chemo");
-                {
-                    // compute pass
-                    let mut cpass =
-                        command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
-                    cpass.set_pipeline(&self.diffuse_pipeline);
-                    cpass.set_bind_group(0, &self.diffuse_bind_group, &[]);
-                    cpass.dispatch_workgroups(self.width/work_group_size, self.height/work_group_size, 1);
-                }
-                command_encoder.pop_debug_group();
-
-
-                command_encoder.push_debug_group("update agent positions");
-                {
-                    // compute pass
-                    let mut cpass =
-                        command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
-                    cpass.set_pipeline(&self.compute_pipeline);
-                    cpass.set_bind_group(0, &self.update_bind_groups[self.frame_num % 2], &[]);
-                    cpass.dispatch_workgroups(self.sim_param_data.num_particles/64, 1, 1);
-                }
-                command_encoder.pop_debug_group();
-
+            if let(Some(frame_rate_limit)) = FRAME_RATE_LIMIT {
+                self.next_render_time += std::time::Duration::from_millis((1000.0 / frame_rate_limit as f32) as u64);
             }
-                
+
+            if self.running
+            {
+            
+                // render to new_dots_texture
+                {
+                    // create a texture view from new_dots_texture
+                    let new_dots_texture_view = self.new_dots_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+                    // create render pass descriptor and its color attachments
+                    let color_attachments = [Some(wgpu::RenderPassColorAttachment {
+                        view: &new_dots_texture_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            // Not clearing here in order to test wgpu's zero texture initialization on a surface texture.
+                            // Users should avoid loading uninitialized memory since this can cause additional overhead.
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: true,
+                        },
+                    })];
+                    let new_dots_render_pass_descriptor = wgpu::RenderPassDescriptor {
+                        label: None,
+                        color_attachments: &color_attachments,
+                        depth_stencil_attachment: None,
+                    };
+
+                    command_encoder.push_debug_group("render dots");
+                    {
+                        // render pass
+                        let mut rpass = command_encoder.begin_render_pass(&new_dots_render_pass_descriptor);
+                        rpass.set_pipeline(&self.new_dots_pipeline);
+                        
+                        // render dst particles
+                        rpass.set_vertex_buffer(0, self.particle_buffers[(self.frame_num + 1) % 2].slice(..));
+                        // the three instance-local vertices
+                        rpass.set_vertex_buffer(1, self.new_dots_vertices_buffer.slice(..));
+
+                        rpass.set_bind_group(0, &self.draw_positions_bind_groups[self.frame_num % 2], &[]);
+                        
+                        rpass.draw(0..6, 0..self.sim_param_data.num_particles);
+
+                    }
+                    command_encoder.pop_debug_group();
+                    
+
+                    let work_group_size = 8;
+
+                    command_encoder.push_debug_group("deposit chemo");
+                    {
+                        // compute pass
+                        let mut cpass =
+                            command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
+                        cpass.set_pipeline(&self.deposit_pipeline);
+                        cpass.set_bind_group(0, &self.deposit_bind_group, &[]);
+                        cpass.dispatch_workgroups(self.width/work_group_size, self.height/work_group_size, 1);
+                    }
+                    command_encoder.pop_debug_group();
+
+
+                    command_encoder.push_debug_group("diffuse chemo");
+                    {
+                        // compute pass
+                        let mut cpass =
+                            command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
+                        cpass.set_pipeline(&self.diffuse_pipeline);
+                        cpass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+                        cpass.dispatch_workgroups(self.width/work_group_size, self.height/work_group_size, 1);
+                    }
+                    command_encoder.pop_debug_group();
+
+
+                    command_encoder.push_debug_group("update agent positions");
+                    {
+                        // compute pass
+                        let mut cpass =
+                            command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
+                        cpass.set_pipeline(&self.compute_pipeline);
+                        cpass.set_bind_group(0, &self.update_bind_groups[self.frame_num % 2], &[]);
+                        cpass.dispatch_workgroups(self.sim_param_data.num_particles/64, 1, 1);
+                    }
+                    command_encoder.pop_debug_group();
+
+                }
+                    
+            }
         }
 
         // render to view
@@ -1000,7 +1028,7 @@ impl framework::Example for Example {
                 ops: wgpu::Operations {
                     // Not clearing here in order to test wgpu's zero texture initialization on a surface texture.
                     // Users should avoid loading uninitialized memory since this can cause additional overhead.
-                    load: wgpu::LoadOp::Load,
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                     store: true,
                 },
             })];
@@ -1017,7 +1045,7 @@ impl framework::Example for Example {
                 rpass.set_pipeline(&self.render_pipeline);
                 
                 rpass.set_vertex_buffer(0, self.particle_buffers[(self.frame_num + 1) % 2].slice(..));
-                rpass.set_vertex_buffer(1, self.vertices_buffer.slice(..));
+                rpass.set_vertex_buffer(1, self.whole_view_vertices_buffer.slice(..));
 
                 rpass.set_bind_group(0, &self.render_bind_group, &[]);
                 
@@ -1033,9 +1061,7 @@ impl framework::Example for Example {
         {
             self.save = false;
 
-            // get the textue bound to the second slot in self.render_bind_group
-
-            let mut buffer_data = vec![0.0f32; (4 * self.width * self.height) as usize];
+            let buffer_data = vec![0.0f32; (4 * self.width * self.height) as usize];
             let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&"buffer data"),
                 contents: bytemuck::cast_slice(&buffer_data),
@@ -1078,7 +1104,8 @@ impl framework::Example for Example {
             device.poll(wgpu::Maintain::Wait);
 
             let data = buffer_slice.get_mapped_range();
-            let img = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(width, height, data.to_vec()).unwrap();
+            let buf = data.to_vec();
+            let img = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(width, height, buf).unwrap();
 
             // get the date time
             let now = Utc::now();
@@ -1101,5 +1128,5 @@ impl framework::Example for Example {
 
 /// run example
 fn main() {
-    framework::run::<Example>("Physarum");
+    framework::run::<Example>("Physarum", (1920, 1280));
 }

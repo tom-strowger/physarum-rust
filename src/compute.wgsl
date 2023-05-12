@@ -12,8 +12,8 @@ struct SimParams {
   max_chemo : f32,
   deposit_chemo : f32,
   decay_chemo : f32,
-  sim_width : f32,
-  sim_height : f32,
+  sim_width : u32,
+  sim_height : u32,
 };
 
 

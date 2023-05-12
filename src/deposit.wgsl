@@ -11,18 +11,14 @@ struct SimParams {
   max_chemo : f32,
   deposit_chemo : f32,
   decay_chemo : f32,
-  sim_width : f32,
-  sim_height : f32,
+  sim_width : u32,
+  sim_height : u32,
 };
 
 @group(0) @binding(0) var<uniform> params : SimParams;
 @group(0) @binding(1) var chemo_in : texture_2d<f32>;
 @group(0) @binding(2) var new_dots : texture_2d<f32>;
 @group(0) @binding(3) var chemo_out: texture_storage_2d<rgba8unorm, write>;
-
-// @group(0) @binding(1) var<storage, read> new_dots : array<Particle>;
-// @group(0) @binding(2) var<storage, read> chemo_in : array<Particle>;
-// @group(0) @binding(3) var<storage, read_write> chemo_out : array<Particle>;
 
 // https://github.com/austinEng/Project6-Vulkan-Flocking/blob/master/data/shaders/computeparticles/particle.comp
 @compute

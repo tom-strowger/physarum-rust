@@ -5,6 +5,17 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Launch (windows)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "preLaunchTask": "rust: cargo build",
+            "program": "${workspaceRoot}/target/debug/physarum.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+        },
+        {
             "type": "lldb",
             "request": "launch",
             "name": "Debug executable 'physarum'",

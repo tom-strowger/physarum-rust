@@ -5,13 +5,15 @@ struct Particle {
 };
 
 struct SimParams {
-  deltaT : f32,
-  rule1Distance : f32,
-  rule2Distance : f32,
-  rule3Distance : f32,
-  rule1Scale : f32,
-  rule2Scale : f32,
-  rule3Scale : f32,
+  sense_angle : f32,
+  sense_offset : f32,
+  step : f32,
+  rotate_angle : f32,
+  max_chemo : f32,
+  deposit_chemo : f32,
+  decay_chemo : f32,
+  sim_width : u32,
+  sim_height : u32,
 };
 
 @group(0) @binding(0) var<uniform> params : SimParams;
@@ -25,17 +27,8 @@ fn main_vs(
     @builtin(instance_index) index: u32
 
 ) -> @builtin(position) vec4<f32> {
-    // let angle = -atan2(particle_vel.x, particle_vel.y);
-    // let pos = vec2<f32>(
-    //     position.x * cos(angle) - position.y * sin(angle),
-    //     position.x * sin(angle) + position.y * cos(angle)
-    // );
 
-    // let particle_pos = agents[index].pos;
-
-    let pos = (vertex_position) * vec2(1280.0, 800.0) * 2.0;
-    // let pos = (vertex_position + particle_pos) * 2.0 + vec2(-1.0, -1.0);
-
+    let pos = (vertex_position) * vec2<f32>(vec2(params.sim_width, params.sim_height));
     return vec4<f32>(pos, 0.0, 1.0);
 }
 
@@ -49,6 +42,10 @@ fn main_fs(
 
   let index = vec2<u32>(x, y);
 
-  let texture_value = textureLoad(chemo_in, index, 0);
+  var texture_value = textureLoad(chemo_in, index, 0);
+
+  // This transform makes it appear less grey/washed out
+  texture_value = pow( texture_value, vec4<f32>(2.0, 2.0, 2.0, 1.0) );
+
   return texture_value;
 }
