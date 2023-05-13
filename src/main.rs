@@ -9,6 +9,8 @@ use winit::{
 use image::{ImageBuffer, Rgba};
 use chrono::Utc;
 use bytemuck::{Pod, Zeroable, NoUninit};
+use serde::{Serialize, Deserialize};
+use std::io::Write;
 
 #[path = "./framework.rs"]
 mod framework;
@@ -28,6 +30,7 @@ struct Example {
     new_dots_vertices_buffer: wgpu::Buffer,
     new_dots_texture: wgpu::Texture,
     chemo_textures: Vec<wgpu::Texture>,
+    control_texture: wgpu::Texture,
     whole_view_vertices_buffer: wgpu::Buffer,
 
     new_dots_pipeline: wgpu::RenderPipeline,
@@ -43,15 +46,17 @@ struct Example {
 
     running: bool,
     save: bool,
+    dump: bool,
 
     // next time to render
     next_render_time: std::time::Instant,
 
     sim_param_data: SimulationParameters,
+    sim_param_buffer: wgpu::Buffer,
+    sim_param_data_dirty: bool,
 }
 // this is Pod
-#[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 struct SimulationParameters
 {
     sense_angle: f32,
@@ -63,6 +68,7 @@ struct SimulationParameters
     decay_chemo: f32,
     width: u32,
     height: u32,
+    control_alpha: f32,
     num_particles: u32,
 }
 
@@ -102,7 +108,7 @@ impl framework::Example for Example {
         config: &wgpu::SurfaceConfiguration,
         _adapter: &wgpu::Adapter,
         device: &wgpu::Device,
-        _queue: &wgpu::Queue,
+        queue: &wgpu::Queue,
     ) -> Self {
         
         
@@ -167,6 +173,7 @@ impl framework::Example for Example {
             decay_chemo: 0.10,
             width: config.width,
             height: config.height,
+            control_alpha: 0.2,
             num_particles: 1 << 20,
         };
         
@@ -184,7 +191,7 @@ impl framework::Example for Example {
             },
             mip_level_count: 1,
             sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
+            dimension: wgpu::TextureDimension::D2, 
             format: wgpu::TextureFormat::Rgba8Unorm,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | 
                 wgpu::TextureUsages::RENDER_ATTACHMENT | 
@@ -197,6 +204,37 @@ impl framework::Example for Example {
         let mut chemo_textures = Vec::new();
         for _i in 0..2 {
             chemo_textures.push( device.create_texture(&chemo_texture_descriptor))
+        }
+        
+        let control_texture;
+
+        // check if there is an image to load to the control texture
+        let image_path = "control.png";
+        
+        if std::path::Path::new(image_path).exists() {
+            let img = image::open(image_path).unwrap().to_rgba8();
+            let img_dimensions = img.dimensions();
+            let img_data = img.into_raw();
+
+            // scale the texture data to fit the texture
+            let mut scaled_img_data = Vec::new();
+            scaled_img_data.reserve((config.width * config.height * 4) as usize);
+            for y in 0..config.height {
+                for x in 0..config.width {
+                    let scaled_x = (x as f32 / config.width as f32 * img_dimensions.0 as f32) as u32;
+                    let scaled_y = (y as f32 / config.height as f32 * img_dimensions.1 as f32) as u32;
+                    let scaled_index = (scaled_y * img_dimensions.0 + scaled_x) as usize * 4;
+                    scaled_img_data.push(img_data[scaled_index]);
+                    scaled_img_data.push(img_data[scaled_index + 1]);
+                    scaled_img_data.push(img_data[scaled_index + 2]);
+                    scaled_img_data.push(img_data[scaled_index + 3]);
+                }
+            }            
+            control_texture = device.create_texture_with_data(queue, &chemo_texture_descriptor, &scaled_img_data );
+        }
+        else {
+            // If there isn't an image on disk, create an empty control texture
+            control_texture = device.create_texture(&chemo_texture_descriptor);
         }
 
         let new_dots_texture_descriptor = wgpu::TextureDescriptor {
@@ -211,7 +249,7 @@ impl framework::Example for Example {
             format: wgpu::TextureFormat::Bgra8UnormSrgb,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | 
                 wgpu::TextureUsages::RENDER_ATTACHMENT | 
-                wgpu::TextureUsages::COPY_DST,
+                wgpu::TextureUsages::COPY_SRC,
             label: None,
             view_formats: &[wgpu::TextureFormat::Bgra8Unorm],
         };
@@ -261,7 +299,8 @@ impl framework::Example for Example {
                     // params
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX,
+                        visibility: wgpu::ShaderStages::VERTEX |
+                                    wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: false,
@@ -275,6 +314,20 @@ impl framework::Example for Example {
                     // chemo to draw
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float{
+                                filterable: false,
+                            },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false
+                        },
+                        count: None,
+                    },
+                    
+                    // conmtrol texture
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
                             sample_type: wgpu::TextureSampleType::Float{
@@ -487,6 +540,20 @@ impl framework::Example for Example {
                         ty: wgpu::BindingType::Sampler(
                             wgpu::SamplerBindingType::Filtering
                         ),
+                        count: None,
+                    },
+                    
+                    // input control
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 5,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float{
+                                filterable: true,
+                            },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false
+                        },
                         count: None,
                     },
                 ],
@@ -782,6 +849,15 @@ impl framework::Example for Example {
                             &wgpu::TextureViewDescriptor::default())
                     )
                 },
+                
+                // control
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(
+                        &control_texture.create_view(
+                            &wgpu::TextureViewDescriptor::default())
+                    )
+                },
             ],
             label: None,
         });
@@ -823,6 +899,15 @@ impl framework::Example for Example {
                             &sampler
                         )
                     },
+
+                    // control
+                    wgpu::BindGroupEntry {
+                        binding: 5,
+                        resource: wgpu::BindingResource::TextureView(
+                            &control_texture.create_view(
+                                &wgpu::TextureViewDescriptor::default())
+                        )
+                    },
                 ],
                 label: None,
             }));
@@ -840,6 +925,7 @@ impl framework::Example for Example {
             new_dots_vertices_buffer,
             new_dots_texture,
             chemo_textures,
+            control_texture,
             whole_view_vertices_buffer,
 
             new_dots_pipeline,
@@ -854,11 +940,73 @@ impl framework::Example for Example {
 
             running: true,
             save: false,
+            dump: false,
 
             next_render_time: std::time::Instant::now(),
 
             sim_param_data,
+            sim_param_buffer,
+            sim_param_data_dirty: false,
         }
+    }
+
+    fn write_texture_to_image(&self, 
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        texture: &wgpu::Texture, 
+        file_name: &str)
+    {
+        
+        let buffer_data = vec![0.0f32; (4 * self.width * self.height) as usize];
+        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(&"buffer data"),
+            contents: bytemuck::cast_slice(&buffer_data),
+            usage: wgpu::BufferUsages::MAP_READ
+                | wgpu::BufferUsages::COPY_DST,
+        });
+
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::ImageCopyBuffer{
+                buffer: &buffer,
+                layout: wgpu::ImageDataLayout {
+                    offset: 0,
+                    bytes_per_row: Some(4 * self.width),
+                    rows_per_image: Some(self.height),
+                },
+            },
+            wgpu::Extent3d {
+                width: self.width,
+                height: self.height,
+                depth_or_array_layers: 1,
+            },
+        );
+        queue.submit(Some(encoder.finish()));
+
+        let buffer_slice = buffer.slice(..);
+
+        // map the buffer, wait until the callback is called
+        
+        let width = self.width;
+        let height = self.height;
+
+        buffer_slice.map_async(wgpu::MapMode::Read,|slice| {
+            if let Err(_) = slice {
+                panic!("failed to map buffer");
+            }
+         });
+        device.poll(wgpu::Maintain::Wait);
+
+        let data = buffer_slice.get_mapped_range();
+        let buf = data.to_vec();
+        let img = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(width, height, buf).unwrap();
+
+        img.save(file_name).unwrap();
+        drop(data);
+
+        buffer.unmap();
     }
 
     /// update is called for any WindowEvent not handled by the framework
@@ -890,6 +1038,40 @@ impl framework::Example for Example {
             } => {
                 // Toggle pause
                 self.save = true;
+            },
+            WindowEvent::KeyboardInput {
+                input:
+                    event::KeyboardInput {
+                        virtual_keycode: Some(event::VirtualKeyCode::D),
+                        state: event::ElementState::Pressed,
+                        ..
+                    },
+                ..
+            } => {
+                // Toggle pause
+                self.dump = true;
+            },
+            WindowEvent::KeyboardInput {
+                input:
+                    event::KeyboardInput {
+                        virtual_keycode: Some(event::VirtualKeyCode::C),
+                        state: event::ElementState::Pressed,
+                        ..
+                    },
+                ..
+            } => {
+                // Adjust the control alpha
+                if self.sim_param_data.control_alpha == 0.0 {
+                    self.sim_param_data.control_alpha = 0.2;
+                }
+                else if self.sim_param_data.control_alpha == 0.2 {
+                    self.sim_param_data.control_alpha = 1.0;
+                }
+                else {
+                    self.sim_param_data.control_alpha = 0.0;
+                }
+
+                self.sim_param_data_dirty = true;
             },
             _ => {}
         }
@@ -923,6 +1105,25 @@ impl framework::Example for Example {
         // get command encoder
         let mut command_encoder =
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        if self.sim_param_data_dirty
+        {
+            let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some(&"buffer data"),
+                contents: bytemuck::bytes_of(&self.sim_param_data),
+                usage: wgpu::BufferUsages::COPY_SRC,
+            });
+
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+            encoder.copy_buffer_to_buffer(
+                &buffer,
+                0,
+                &self.sim_param_buffer,
+                0,
+                std::mem::size_of::<SimulationParameters>() as wgpu::BufferAddress,
+            );
+            queue.submit(Some(encoder.finish()));
+        }
 
         let time_to_render = FRAME_RATE_LIMIT.is_none() || std::time::Instant::now() >= self.next_render_time;
 
@@ -1061,61 +1262,56 @@ impl framework::Example for Example {
         {
             self.save = false;
 
-            let buffer_data = vec![0.0f32; (4 * self.width * self.height) as usize];
-            let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some(&"buffer data"),
-                contents: bytemuck::cast_slice(&buffer_data),
-                usage: wgpu::BufferUsages::MAP_READ
-                    | wgpu::BufferUsages::COPY_DST,
-            });
+            let now = Utc::now();
 
+            self.write_texture_to_image(
+                device, 
+                queue, 
+                &self.chemo_textures[0], 
+                format!(
+                    "chemo_{}_{}.png",
+                    now.format("%Y%m%d_%H%M"), 
+                    self.sim_param_data.serialize()).as_str() );
+        }
 
-            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-            encoder.copy_texture_to_buffer(
-                self.chemo_textures[0].as_image_copy(),
-                wgpu::ImageCopyBuffer{
-                    buffer: &buffer,
-                    layout: wgpu::ImageDataLayout {
-                        offset: 0,
-                        bytes_per_row: Some(4 * self.width),
-                        rows_per_image: Some(self.height),
-                    },
-                },
-                wgpu::Extent3d {
-                    width: self.width,
-                    height: self.height,
-                    depth_or_array_layers: 1,
-                },
-            );
-            queue.submit(Some(encoder.finish()));
-
-            let buffer_slice = buffer.slice(..);
-
-            // map the buffer, wait until the callback is called
-            
-            let width = self.width;
-            let height = self.height;
-
-            buffer_slice.map_async(wgpu::MapMode::Read,|slice| {
-                if let Err(_) = slice {
-                    panic!("failed to map buffer");
-                }
-             });
-            device.poll(wgpu::Maintain::Wait);
-
-            let data = buffer_slice.get_mapped_range();
-            let buf = data.to_vec();
-            let img = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(width, height, buf).unwrap();
+        if self.dump
+        {
+            self.dump = false;
 
             // get the date time
             let now = Utc::now();
-            img.save(format!("chemo_{}_{}.png",
-                now.format("%Y%m%d_%H%M"),
-                self.sim_param_data.serialize())).unwrap();
-            
-            drop(data);
 
-            buffer.unmap();
+            // make a directory for the dump
+            let dump_dir = format!("dump_{}", now.format("%Y%m%d_%H%M"));
+            std::fs::create_dir(dump_dir.as_str()).unwrap();
+
+            // dump the parameters as json
+            let param_json = serde_json::to_string_pretty(&self.sim_param_data).unwrap();
+            let mut param_file = std::fs::File::create(format!("{}/params.json", dump_dir).as_str()).unwrap();
+            param_file.write_all(param_json.as_bytes()).unwrap();
+
+
+            // write the textures as images
+            self.write_texture_to_image(
+                device, 
+                queue, 
+                &self.chemo_textures[0], 
+                format!("{}/chemo_0.png", dump_dir).as_str() );
+            self.write_texture_to_image(
+                device, 
+                queue, 
+                &self.chemo_textures[1], 
+                format!("{}/chemo_1.png", dump_dir).as_str() );
+            self.write_texture_to_image(
+                device, 
+                queue, 
+                &&self.control_texture, 
+                format!("{}/control.png", dump_dir).as_str() );
+            self.write_texture_to_image(
+                device, 
+                queue, 
+                &&self.new_dots_texture, 
+                format!("{}/new_dots.png", dump_dir).as_str() );
         }
 
         // update frame count

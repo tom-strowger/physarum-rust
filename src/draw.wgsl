@@ -14,10 +14,12 @@ struct SimParams {
   decay_chemo : f32,
   sim_width : u32,
   sim_height : u32,
+  control_alpha : f32,
 };
 
 @group(0) @binding(0) var<uniform> params : SimParams;
 @group(0) @binding(1) var chemo_in : texture_2d<f32>;
+@group(0) @binding(2) var control_texture : texture_2d<f32>;
 
 @vertex
 fn main_vs(
@@ -42,10 +44,15 @@ fn main_fs(
 
   let index = vec2<u32>(x, y);
 
-  var texture_value = textureLoad(chemo_in, index, 0);
+  var chemo_value = textureLoad(chemo_in, index, 0);
 
   // This transform makes it appear less grey/washed out
-  texture_value = pow( texture_value, vec4<f32>(2.0, 2.0, 2.0, 1.0) );
+  chemo_value = pow( chemo_value, vec4<f32>(2.0, 2.0, 2.0, 1.0) );
+  
+  var control_value = textureLoad(control_texture, index, 0);
+
+  // mix in the control texture
+  var texture_value = mix(chemo_value, control_value, params.control_alpha);
 
   return texture_value;
 }

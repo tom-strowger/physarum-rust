@@ -58,6 +58,12 @@ pub trait Example: 'static + Sized {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     );
+    fn write_texture_to_image(
+        &self, 
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        texture: &wgpu::Texture, 
+        image_prefix: &str );
     fn update(&mut self, event: WindowEvent);
     fn render(
         &mut self,

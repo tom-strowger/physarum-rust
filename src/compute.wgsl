@@ -22,13 +22,14 @@ struct SimParams {
 @group(0) @binding(2) var chemo_texture : texture_2d<f32>;
 @group(0) @binding(3) var<storage, read_write> agents_out : array<Particle>;
 @group(0) @binding(4) var texture_sampler: sampler;
+@group(0) @binding(5) var control_texture : texture_2d<f32>;
 
 // @todo This could be improved 
 fn rand(co: vec2<f32>)->f32{
     return fract(sin(dot(co, vec2<f32>(12.9898, 78.233))) * 43758.5453);
 }
 
-// @todo Improve sampling 
+
 fn sample_texture(tex: texture_2d<f32>, pos: vec2<f32>)->vec4<f32>{
   let tex_size = textureDimensions(tex);
   let texel_size = vec2<f32>(1.0) / vec2<f32>(tex_size);
@@ -36,6 +37,15 @@ fn sample_texture(tex: texture_2d<f32>, pos: vec2<f32>)->vec4<f32>{
   // There is probably a bug somewhere
   let texel_pos = pos * texel_size -  vec2(0.5, 0.5 );
   return textureSampleLevel(tex, texture_sampler, texel_pos, 0.0);
+}
+
+fn sense_at_location(pos: vec2<f32>)->f32{
+  let chemo_sample = sample_texture(chemo_texture, pos).r;
+
+  let control_sample = textureLoad(control_texture, vec2<u32>( pos ), 0);
+
+  // Red repels, blue attracts
+  return chemo_sample * ( 1.0 - control_sample.r ) * (1.0 + control_sample.b);
 }
 
 @compute
@@ -63,15 +73,15 @@ fn main(@builtin(global_invocation_id) global_invocation_id: vec3<u32>) {
   // Sense ahead
   // @todo check texture sampling is repeating (not clamping)
   let pos_a = agent.pos * sim_size + dir_a * params.sense_offset;
-  let sense_a = sample_texture( chemo_texture, pos_a).x;
+  let sense_a = sense_at_location( pos_a);
 
   // Sense left
   let pos_l = agent.pos * sim_size + dir_l * params.sense_offset;
-  let sense_l = sample_texture( chemo_texture, pos_l).x;
+  let sense_l = sense_at_location( pos_l);
 
   // Sense right
   let pos_r = agent.pos * sim_size  + dir_r * params.sense_offset;
-  let sense_r = sample_texture( chemo_texture, pos_r).x;
+  let sense_r = sense_at_location( pos_r);
 
   var dir = dir_a;
   var head = head_a;

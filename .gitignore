@@ -9,3 +9,7 @@ target/
 
 # Saved images
 *.png
+!control.png
+
+# Dumps
+dump_*/

@@ -12,7 +12,7 @@
             "program": "${workspaceRoot}/target/debug/physarum.exe",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${fileDirname}",
+            "cwd": "${workspaceRoot}",
             "environment": [],
         },
         {
