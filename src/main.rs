@@ -91,6 +91,9 @@ unsafe impl Zeroable for SimulationParameters {}
 unsafe impl Pod for SimulationParameters {}
 // unsafe impl NoUninit for SimulationParameters {}
 
+const LOGICAL_WIDTH : u32 = 1280;
+const LOGICAL_HEIGHT : u32 = 800;
+
 impl framework::Example for Example {
     fn required_limits() -> wgpu::Limits {
         wgpu::Limits::downlevel_defaults()
@@ -110,18 +113,8 @@ impl framework::Example for Example {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self {
-        
-        
-        let width = 1280;
-        let height = 800;
 
-        let dpi_factor = config.width as f32 / width as f32;
-
-
-        let width = 1280;
-        let height = 800;
-
-        let dpi_factor = config.width as f32 / width as f32;
+        let dpi_factor = config.width as f32 / LOGICAL_WIDTH as f32;
 
         let deposit_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: None,
@@ -399,6 +392,16 @@ impl framework::Example for Example {
                         },
                         count: None,
                     },
+
+                    // sampler
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::COMPUTE,
+                        ty: wgpu::BindingType::Sampler(
+                            wgpu::SamplerBindingType::Filtering
+                        ),
+                        count: None,
+                    },
                 ],
                 label: None,
             });
@@ -406,9 +409,9 @@ impl framework::Example for Example {
         // create a texture sampler
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: None,
-            address_mode_u: wgpu::AddressMode::Repeat,
-            address_mode_v: wgpu::AddressMode::Repeat,
-            address_mode_w: wgpu::AddressMode::Repeat,
+            address_mode_u: wgpu::AddressMode::ClampToEdge,  // temporaririly clamping while debugging.  Will move back to repeating later
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             mipmap_filter: wgpu::FilterMode::Linear,
@@ -787,6 +790,14 @@ impl framework::Example for Example {
                     resource: wgpu::BindingResource::TextureView(
                         &chemo_textures[1].create_view(
                             &wgpu::TextureViewDescriptor::default())
+                    )
+                },
+
+                // sampler
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::Sampler(
+                        &sampler
                     )
                 },
             ],
@@ -1270,7 +1281,7 @@ impl framework::Example for Example {
                 &self.chemo_textures[0], 
                 format!(
                     "chemo_{}_{}.png",
-                    now.format("%Y%m%d_%H%M"), 
+                    now.format("%Y%m%d_%H%M%S"), 
                     self.sim_param_data.serialize()).as_str() );
         }
 
@@ -1324,5 +1335,5 @@ impl framework::Example for Example {
 
 /// run example
 fn main() {
-    framework::run::<Example>("Physarum", (1920, 1280));
+    framework::run::<Example>("Physarum", (LOGICAL_WIDTH, LOGICAL_HEIGHT));
 }

@@ -77,9 +77,9 @@ fn main(@builtin(global_invocation_id) global_invocation_id: vec3<u32>) {
     1.0 - params.decay_chemo,
     1.0 - params.decay_chemo );
 
-  if color.r < 0.005 {
-    color = vec3<f32>( 0.0, 0.0, 0.0 );
-  }
+  // if color.r < 0.005 {
+  //   color = vec3<f32>( 0.0, 0.0, 0.0 );
+  // }
 
   // let color = textureLoad( chemo_in, index, 0 ).rgb;
   textureStore(chemo_out, index, vec4<f32>(color, 1.0));

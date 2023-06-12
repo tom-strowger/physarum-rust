@@ -35,14 +35,35 @@ fn sample_texture(tex: texture_2d<f32>, pos: vec2<f32>)->vec4<f32>{
   let texel_size = vec2<f32>(1.0) / vec2<f32>(tex_size);
   // It seemed like the sampling was off so I added the -0.5, -0.5 which fixed it.
   // There is probably a bug somewhere
-  let texel_pos = pos * texel_size -  vec2(0.5, 0.5 );
+
+  var texel_pos = pos * texel_size;
+  return textureSampleLevel(tex, texture_sampler, texel_pos, 0.0);
+
+  // var texel_pos = pos * texel_size;
+  // if( texel_pos.y < 0.9 )
+  // {
+  //   return textureSampleLevel(tex, texture_sampler, texel_pos, 0.0);
+  // }
+  // else
+  // {
+  //   return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+  // }
+}
+
+fn sample_texture_control(tex: texture_2d<f32>, pos: vec2<f32>)->vec4<f32>{
+  let tex_size = textureDimensions(tex);
+  let texel_size = vec2<f32>(1.0) / vec2<f32>(tex_size);
+  // It seemed like the sampling was off so I added the -0.5, -0.5 which fixed it.
+  // There is probably a bug somewhere
+  let texel_pos = pos * texel_size;
   return textureSampleLevel(tex, texture_sampler, texel_pos, 0.0);
 }
 
 fn sense_at_location(pos: vec2<f32>)->f32{
   let chemo_sample = sample_texture(chemo_texture, pos).r;
+  let control_sample = sample_texture_control(control_texture, pos);
 
-  let control_sample = textureLoad(control_texture, vec2<u32>( pos ), 0);
+  // let control_sample = textureLoad(control_texture, vec2<u32>( pos ), 0);
 
   // Red repels, blue attracts
   return chemo_sample * ( 1.0 - control_sample.r ) * (1.0 + control_sample.b);
@@ -73,15 +94,15 @@ fn main(@builtin(global_invocation_id) global_invocation_id: vec3<u32>) {
   // Sense ahead
   // @todo check texture sampling is repeating (not clamping)
   let pos_a = agent.pos * sim_size + dir_a * params.sense_offset;
-  let sense_a = sense_at_location( pos_a);
+  let sense_a = sense_at_location( pos_a );
 
   // Sense left
   let pos_l = agent.pos * sim_size + dir_l * params.sense_offset;
-  let sense_l = sense_at_location( pos_l);
+  let sense_l = sense_at_location( pos_l );
 
   // Sense right
   let pos_r = agent.pos * sim_size  + dir_r * params.sense_offset;
-  let sense_r = sense_at_location( pos_r);
+  let sense_r = sense_at_location( pos_r );
 
   var dir = dir_a;
   var head = head_a;
