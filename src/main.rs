@@ -392,16 +392,6 @@ impl framework::Example for Example {
                         },
                         count: None,
                     },
-
-                    // sampler
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 4,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Sampler(
-                            wgpu::SamplerBindingType::Filtering
-                        ),
-                        count: None,
-                    },
                 ],
                 label: None,
             });
@@ -790,14 +780,6 @@ impl framework::Example for Example {
                     resource: wgpu::BindingResource::TextureView(
                         &chemo_textures[1].create_view(
                             &wgpu::TextureViewDescriptor::default())
-                    )
-                },
-
-                // sampler
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::Sampler(
-                        &sampler
                     )
                 },
             ],

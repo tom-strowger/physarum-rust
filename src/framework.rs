@@ -195,6 +195,13 @@ async fn setup<E: Example>(title: &str, logical_size: (u32, u32)) -> Setup {
 
         (size, surface)
     };
+    
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let adapters = instance.enumerate_adapters(backends);
+        println!("Available adapters: {:?}", adapters.map(|x|x.get_info()).collect::<Vec<wgpu::AdapterInfo>>());
+    }
+
     let adapter =
         wgpu::util::initialize_adapter_from_env_or_default(&instance, backends, Some(&surface))
             .await
@@ -203,7 +210,7 @@ async fn setup<E: Example>(title: &str, logical_size: (u32, u32)) -> Setup {
     #[cfg(not(target_arch = "wasm32"))]
     {
         let adapter_info = adapter.get_info();
-        println!("Using {} ({:?})", adapter_info.name, adapter_info.backend);
+        println!("Using {:?}", adapter_info);
     }
 
     let optional_features = E::optional_features();

@@ -13,7 +13,16 @@
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceRoot}",
-            "environment": [],
+            "environment": [
+                {
+                    "name": "RUST_BACKTRACE",
+                    "value": "1"
+                },
+                {
+                    "name": "WGPU_ADAPTER_NAME",
+                    "value": "AMD Radeon RX 6800"
+                }
+            ],
         },
         {
             "type": "lldb",
