@@ -58,12 +58,6 @@ pub trait Example: 'static + Sized {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     );
-    fn write_texture_to_image(
-        &self, 
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        texture: &wgpu::Texture, 
-        image_prefix: &str );
     fn update(&mut self, event: WindowEvent);
     fn render(
         &mut self,
@@ -203,7 +197,8 @@ async fn setup<E: Example>(title: &str, logical_size: (u32, u32)) -> Setup {
     }
 
     let adapter =
-        wgpu::util::initialize_adapter_from_env_or_default(&instance, backends, Some(&surface))
+        // wgpu::util::initialize_adapter_from_env_or_default(&instance, backends, Some(&surface)) 
+        wgpu::util::initialize_adapter_from_env_or_default(&instance, Some(&surface))
             .await
             .expect("No suitable GPU adapters found on the system!");
 
