@@ -1,3 +1,4 @@
+use pipeline::PipelineConfiguration;
 ///
 /// This application is built upon a wgpu example, thus the Example struct
 /// 
@@ -50,7 +51,8 @@ impl framework::Example for Example {
 
         // returns Example struct and No encoder commands
         Example {
-            pipeline: Pipeline::init(config, _adapter, device, queue),
+            pipeline: Pipeline::init(config, device, queue, 
+                PipelineConfiguration::default(device, config, queue)),
 
             running: true,
             save: false,
