@@ -8,7 +8,7 @@ use std::io::Write;
 
 /// Pipeline struct holds references to wgpu resources and frame persistent data
 
-struct PipelineSharedBuffers {
+pub struct PipelineSharedBuffers {
     // Buffers/data used during the pipelines
     agent_buffers: Vec<wgpu::Buffer>,
     new_dots_vertices_buffer: wgpu::Buffer,
@@ -18,6 +18,15 @@ struct PipelineSharedBuffers {
 
     sim_param_buffer: wgpu::Buffer,
     sim_param_data: SimulationParameters,
+}
+
+impl PipelineSharedBuffers {
+    pub fn set_chemo_texture( &mut self, texture: wgpu::Texture )
+    {
+        self.chemo_textures[0] = texture;
+        // @todo Set in both? - Copy is not implemented for texture
+        // self.chemo_textures[1] = texture;
+    }
 }
 
 trait RenderableStage {
@@ -55,13 +64,7 @@ pub struct Pipeline {
 
 pub struct PipelineConfiguration
 {
-    agent_buffers: Vec<wgpu::Buffer>,
-    new_dots_vertices_buffer: wgpu::Buffer,
-    new_dots_texture: wgpu::Texture,
-    chemo_textures: Vec<wgpu::Texture>,
-    control_texture: wgpu::Texture,
-    
-    sim_param_data: SimulationParameters,
+    initial_buffers: PipelineSharedBuffers
 }
 
 impl PipelineConfiguration {
@@ -104,6 +107,11 @@ impl PipelineConfiguration {
             num_agents: 1 << 20,
         };
 
+        let sim_param_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Simulation Parameter Buffer"),
+            contents: bytemuck::bytes_of(&sim_param_data),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
 
         // buffer for the 2x triangle vertices of each instance, together making a square
 
@@ -222,13 +230,16 @@ impl PipelineConfiguration {
 
         PipelineConfiguration
         {
-            agent_buffers,
-            new_dots_vertices_buffer,
-            new_dots_texture,
-            chemo_textures,
-            control_texture,
+            initial_buffers: PipelineSharedBuffers{
+                agent_buffers,
+                new_dots_vertices_buffer,
+                new_dots_texture,
+                chemo_textures,
+                control_texture,
 
-            sim_param_data
+                sim_param_data,
+                sim_param_buffer
+            }
         }
     }
 }
@@ -294,21 +305,6 @@ impl Pipeline {
 
         let dpi_factor = config.width as f32 / LOGICAL_WIDTH as f32;
 
-        let sim_param_data = pipeline_configuration.sim_param_data;
-        let agent_buffers = pipeline_configuration.agent_buffers;
-        let new_dots_vertices_buffer = pipeline_configuration.new_dots_vertices_buffer;
-        let new_dots_texture = pipeline_configuration.new_dots_texture;
-        let chemo_textures = pipeline_configuration.chemo_textures;
-        let control_texture = pipeline_configuration.control_texture;
-        // let whole_view_vertices_buffer = pipeline_configuration.whole_view_vertices_buffer;
-        
-        let sim_param_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Simulation Parameter Buffer"),
-            contents: bytemuck::bytes_of(&sim_param_data),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-
         // create a texture sampler
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: None,
@@ -325,16 +321,8 @@ impl Pipeline {
             border_color: None,
         });
 
-        let shared_buffers = PipelineSharedBuffers {
-            agent_buffers,
-            new_dots_vertices_buffer,
-            new_dots_texture,
-            chemo_textures,
-            control_texture,
-
-            sim_param_data,
-            sim_param_buffer,
-        };
+        let shared_buffers = pipeline_configuration.initial_buffers;
+        let sim_param_data = &shared_buffers.sim_param_data;
 
         let width = config.width;
         let height = config.height;
@@ -374,6 +362,11 @@ impl Pipeline {
         alpha: f32 ) {
         self.shared_buffers.sim_param_data.control_alpha = alpha;
         self.sim_param_data_dirty = true;
+    }
+
+    pub fn get_shared_buffers( &mut self ) -> &mut PipelineSharedBuffers
+    {
+        &mut self.shared_buffers
     }
 
     pub fn save_image(&self, 

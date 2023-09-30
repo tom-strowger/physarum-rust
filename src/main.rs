@@ -15,7 +15,7 @@ mod framework;
 // define a global frame rate limit
 const FRAME_RATE_LIMIT: Option<u32> = Some(120);
 
-struct Example {
+struct Application {
     pipeline: Pipeline,
 
     running: bool,
@@ -29,7 +29,7 @@ struct Example {
 const LOGICAL_WIDTH : u32 = 1280;
 const LOGICAL_HEIGHT : u32 = 800;
 
-impl framework::Example for Example {
+impl framework::Example for Application {
     fn required_limits() -> wgpu::Limits {
         wgpu::Limits::downlevel_defaults()
     }
@@ -50,7 +50,7 @@ impl framework::Example for Example {
     ) -> Self {
 
         // returns Example struct and No encoder commands
-        Example {
+        Application {
             pipeline: Pipeline::init(config, device, queue, 
                 PipelineConfiguration::default(device, config, queue)),
 
@@ -194,7 +194,161 @@ impl framework::Example for Example {
     }
 }
 
+
+struct TestRunner {
+    pipeline: Pipeline
+}
+
+impl framework::Example for TestRunner {
+    fn required_limits() -> wgpu::Limits {
+        wgpu::Limits::downlevel_defaults()
+    }
+
+    fn required_downlevel_capabilities() -> wgpu::DownlevelCapabilities {
+        wgpu::DownlevelCapabilities {
+            flags: wgpu::DownlevelFlags::COMPUTE_SHADERS,
+            ..Default::default()
+        }
+    }
+
+    /// constructs initial instance of Example struct
+    fn init(
+        config: &wgpu::SurfaceConfiguration,
+        _adapter: &wgpu::Adapter,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Self {
+
+        // returns Example struct and No encoder commands
+        TestRunner {
+            pipeline: Pipeline::init(config, device, queue, 
+                PipelineConfiguration::default(device, config, queue))
+        }
+    }
+
+    /// update is called for any WindowEvent not handled by the framework
+    fn update(&mut self, event: winit::event::WindowEvent) {
+        //empty
+    }
+
+    /// resize is called on WindowEvent::Resized events
+    fn resize(
+        &mut self,
+        sc_desc: &wgpu::SurfaceConfiguration,
+        _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+    ) {
+        let w = sc_desc.width;
+        let h = sc_desc.height;
+
+        self.pipeline.resize(w, h);
+    }
+
+    /// render is called each frame, dispatching compute groups proportional
+    ///   a TriangleList draw call for all NUM_PARTICLES at 3 vertices each
+    fn render(
+        &mut self,
+        view: &wgpu::TextureView,
+        texture: &wgpu::Texture,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        _: &framework::Spawner,
+    ) {
+        online_tests::test_pipeline( &mut self.pipeline, device, queue  );
+    }
+}
+
 /// run example
 fn main() {
-    framework::run::<Example>("Physarum", (LOGICAL_WIDTH, LOGICAL_HEIGHT));
+    framework::run::<Application>("Physarum", (LOGICAL_WIDTH, LOGICAL_HEIGHT));
+    // framework::run::<TestRunner>("Physarum", (LOGICAL_WIDTH, LOGICAL_HEIGHT));
+}
+
+/// These are a group of tests that can run "online" (with a real pipeline/wgpu adapter)
+mod online_tests {
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+    use wgpu::{util::DeviceExt};
+
+    fn create_texture_with_vertical_line(
+        device : &wgpu::Device,
+        queue: &wgpu::Queue,
+        width: u32,
+        height: u32) -> wgpu::Texture
+    {
+        let texture_descriptor = wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width: width,
+                height: height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2, 
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | 
+                wgpu::TextureUsages::RENDER_ATTACHMENT | 
+                wgpu::TextureUsages::STORAGE_BINDING |
+                wgpu::TextureUsages::COPY_SRC,
+            label: None,
+            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
+        };
+
+        let black_pixel : Vec<u8> = [ 0, 0, 0, 0].to_vec();
+        let white_pixel : Vec<u8> = [ 255, 255, 255, 255].to_vec();
+
+        // scale the texture data to fit the texture
+        let mut img_data = Vec::new();
+        img_data.reserve((width * height * 4) as usize);
+        for y in 0..height {
+            for x in 0..width {
+
+                if y == width / 2 {
+                    for &d in &white_pixel{
+                        img_data.push(d);
+                    }
+                }
+                else {
+                    for &d in &black_pixel{
+                        img_data.push(d);
+                    }
+                }
+
+            }
+        }
+
+        let texture = device.create_texture_with_data(queue, &texture_descriptor, &img_data );
+
+        (texture)
+    }
+
+    fn test_pipeline_agent_step(
+        pipeline: &mut Pipeline,
+        device : &wgpu::Device,
+        queue: &wgpu::Queue)
+    {
+        // GIVEN
+        // A chemo texture containing a straight vertical line
+        let width = 1280;
+        let height = 800;
+        let chemo_texture = create_texture_with_vertical_line(device, queue, width, height);
+        pipeline.get_shared_buffers().set_chemo_texture(chemo_texture);
+        // and two agents which are on the line, one in the top half and one in the bottom half
+
+        // WHEN
+        // I compute a step
+
+        // THEN
+        // The agent positions update correctly
+    }
+
+    pub fn test_pipeline(
+        pipeline: &mut Pipeline,
+        device : &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) {
+        test_pipeline_agent_step( pipeline, device, queue );
+
+        println!("Testing done");
+    }
 }
