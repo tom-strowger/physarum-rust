@@ -66,6 +66,7 @@ pub trait Example: 'static + Sized {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         spawner: &Spawner,
+        should_exit: &mut bool
     );
 }
 
@@ -390,7 +391,12 @@ fn start<E: Example>(
                     ..wgpu::TextureViewDescriptor::default()
                 });
 
-                example.render(&view, &frame.texture, &device, &queue, &spawner);
+                let mut should_exit = false;
+                example.render(&view, &frame.texture, &device, &queue, &spawner, &mut should_exit);
+
+                if should_exit {
+                    *control_flow = ControlFlow::Exit;
+                }
 
                 frame.present();
 

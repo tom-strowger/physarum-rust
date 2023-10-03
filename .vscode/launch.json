@@ -27,7 +27,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'physarum'",
+            "name": "Run 'physarum'",
             "cargo": {
                 "args": [
                     "build",
@@ -45,11 +45,10 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'physarum'",
+            "name": "Test 'physarum'",
             "cargo": {
                 "args": [
-                    "test",
-                    "--no-run",
+                    "build",
                     "--bin=physarum",
                     "--package=physarum"
                 ],
@@ -58,7 +57,7 @@
                     "kind": "bin"
                 }
             },
-            "args": [],
+            "args": [ "--test" ],
             "cwd": "${workspaceFolder}"
         }
     ]

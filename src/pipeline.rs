@@ -1,10 +1,76 @@
 use nanorand::{Rng, WyRand};
 use std::{borrow::Cow, mem};
-use wgpu::{util::DeviceExt};
+use wgpu::{util::DeviceExt, Origin3d, ImageCopyTexture};
 use chrono::Utc;
 use bytemuck::{Pod, Zeroable};
 use serde::{Serialize, Deserialize};
 use std::io::Write;
+
+
+
+// this is Pod
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+pub struct AgentData
+{
+    pub pos_x: f32,  // normalised 0 to 1 
+    pub pos_y: f32,  // normalised 0 to 1 
+    pub heading: f32,  // normalised 0 to 1  which maps to 0 to 2pi radians. 0 is up, pi is down, pi/2 is right, 3pi/2 is left
+    pub padding: f32,
+}
+
+impl AgentData
+{
+    pub fn init(
+        pos_x: f32,
+        pos_y: f32,
+        heading: f32
+    )->AgentData
+    {
+        AgentData { pos_x, pos_y, heading, padding: 0.0 }
+    }
+}
+
+unsafe impl Zeroable for AgentData {}
+unsafe impl Pod for AgentData {}
+
+// this is Pod
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+pub struct SimulationParameters
+{
+    sense_angle: f32,
+    sense_offset: f32,
+    step: f32,
+    rotate_angle: f32,
+    max_chemo: f32,
+    deposit_chemo: f32,
+    decay_chemo: f32,
+    width: u32,
+    height: u32,
+    control_alpha: f32,
+    num_agents: u32,
+}
+
+impl SimulationParameters
+{
+    fn serialize(& self) -> String
+    {
+        return format!("sa{:.2}_so{:.2}_step{:.2}_ra{:.2}_decay{:.2}_N{}",
+            self.sense_angle,
+            self.sense_offset,
+            self.step,
+            self.rotate_angle,
+            self.decay_chemo,
+            self.num_agents
+        ).to_string();
+    }
+}
+
+const LOGICAL_WIDTH : u32 = 1280;
+const LOGICAL_HEIGHT : u32 = 800;
+
+unsafe impl Zeroable for SimulationParameters {}
+unsafe impl Pod for SimulationParameters {}
+// unsafe impl NoUninit for SimulationParameters {}
 
 /// Pipeline struct holds references to wgpu resources and frame persistent data
 
@@ -18,14 +84,198 @@ pub struct PipelineSharedBuffers {
 
     sim_param_buffer: wgpu::Buffer,
     sim_param_data: SimulationParameters,
+    sim_param_data_dirty: bool
 }
 
 impl PipelineSharedBuffers {
-    pub fn set_chemo_texture( &mut self, texture: wgpu::Texture )
+
+    fn create_texture_from_data(
+        device : &wgpu::Device,
+        queue: &wgpu::Queue,
+        width: u32,
+        height: u32,
+        data: &[u8]
+    ) -> wgpu::Texture
     {
-        self.chemo_textures[0] = texture;
-        // @todo Set in both? - Copy is not implemented for texture
-        // self.chemo_textures[1] = texture;
+        let texture_descriptor = wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width: width,
+                height: height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2, 
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | 
+                wgpu::TextureUsages::RENDER_ATTACHMENT | 
+                wgpu::TextureUsages::STORAGE_BINDING |
+                wgpu::TextureUsages::COPY_SRC,
+            label: None,
+            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
+        };
+        let texture = device.create_texture_with_data(queue, &texture_descriptor, &data );
+
+        (texture)
+    }
+
+    pub fn get_chemo_texture_width_height(
+        &self,
+    ) -> (u32, u32)
+    {
+        (self.chemo_textures[0].width(), self.chemo_textures[0].height())
+    }
+
+    pub fn upload_to_chemo_texture(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        width: u32,
+        height: u32,
+        data: &[u8] )
+    {
+        self.upload_texture(device, queue, width, height, data, &self.chemo_textures[0]);
+    }
+
+    fn upload_texture(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        width: u32,
+        height: u32,
+        data: &[u8],
+        destination_texture: &wgpu::Texture
+    )
+    {
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        let texture = PipelineSharedBuffers::create_texture_from_data( device, queue, width, height, data );
+
+        encoder.copy_texture_to_texture(
+            ImageCopyTexture{ 
+                texture: &texture,
+                mip_level:0,
+                origin: Origin3d::default(),
+                aspect: wgpu::TextureAspect::All
+            } ,
+            ImageCopyTexture{ 
+                texture: &destination_texture,
+                mip_level:0,
+                origin: Origin3d::default(),
+                aspect: wgpu::TextureAspect::All
+            } ,
+            wgpu::Extent3d{
+                width,
+                height,
+                depth_or_array_layers: 1
+            }
+        );
+        queue.submit(Some(encoder.finish()));
+    }
+
+    fn create_agent_buffer(
+        device : &wgpu::Device,
+        agents: &Vec<AgentData>) -> wgpu::Buffer
+    {
+        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(&format!("Particle Buffer x")),
+            contents: bytemuck::cast_slice(&agents),
+            usage: 
+                wgpu::BufferUsages::VERTEX
+                | wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC
+        });
+
+        (buffer)
+    }
+
+    pub fn upload_buffer(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        data: &[u8],
+        destination_buffer: &wgpu::Buffer
+    )
+    {
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(&"buffer data"),
+            contents: data,
+            usage: wgpu::BufferUsages::COPY_SRC,
+        });
+
+        encoder.copy_buffer_to_buffer(
+            &buffer,
+            0,
+            &destination_buffer,
+            0,
+            data.len() as wgpu::BufferAddress,
+        );
+        queue.submit(Some(encoder.finish()));
+    }
+
+    pub fn set_agent_data( &mut self, 
+        device : &wgpu::Device,
+        queue: &wgpu::Queue,
+        index: usize,
+        agent_data: Vec<AgentData> )
+    {
+        self.sim_param_data.num_agents = agent_data.len() as u32;
+        self.sim_param_data_dirty = true;
+        self.upload_buffer( device, queue, bytemuck::cast_slice(&agent_data), &self.agent_buffers[index]);
+    }
+
+    fn create_agent_read_buffer(
+        device : &wgpu::Device,
+        size: usize
+    ) -> wgpu::Buffer
+    {
+        let data = vec![0; size];
+        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some(&format!("Temp agent read buffer")),
+            contents: &data,
+            usage: 
+                wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::MAP_READ
+        });
+
+        (buffer)
+    }
+
+    pub fn get_agent_data( &mut self, 
+        device : &wgpu::Device,
+        queue: &wgpu::Queue,
+        index: usize) -> Vec<AgentData>
+    {        
+        let source_buffer = &self.agent_buffers[index];
+        let size = source_buffer.size();
+        let read_buffer = PipelineSharedBuffers::create_agent_read_buffer( device, size as usize );
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        encoder.copy_buffer_to_buffer(
+            source_buffer,
+            0,
+            &read_buffer,
+            0,
+            size as wgpu::BufferAddress,
+        );
+        queue.submit(Some(encoder.finish()));
+
+        let buffer_slice = read_buffer.slice(..);
+
+        buffer_slice.map_async(wgpu::MapMode::Read,|slice| {
+        if let Err(_) = slice {
+                panic!("failed to map buffer");
+            }
+        });
+        device.poll(wgpu::Maintain::Wait);
+
+        let u8_data: Vec<u8> = buffer_slice.get_mapped_range().into_iter().map(|&x|x).collect();
+
+        (bytemuck::cast_slice(&u8_data).to_vec())
     }
 }
 
@@ -58,8 +308,6 @@ pub struct Pipeline {
     height: u32,
 
     frame_num: usize,
-
-    sim_param_data_dirty: bool,
 }
 
 pub struct PipelineConfiguration
@@ -131,14 +379,21 @@ impl PipelineConfiguration {
 
         // buffer for all particles data of type [(posx,posy,velx,vely),...]
 
-        let mut initial_particle_data = vec![0.0f32; (4 * sim_param_data.num_agents) as usize];
+        let mut initial_particle_data = vec![
+            AgentData{ 
+                pos_x: 0.0,
+                pos_y: 0.0,
+                heading: 0.0,
+                padding: 0.0,
+            };
+            sim_param_data.num_agents as usize];
+        
         let mut rng = WyRand::new_seed(42);
         let mut unif = || rng.generate::<f32>(); // Generate a num (0, 1)
-        for particle_instance_chunk in initial_particle_data.chunks_mut(4) {
-            particle_instance_chunk[0] = unif(); // posx
-            particle_instance_chunk[1] = unif(); // posy
-            particle_instance_chunk[2] = unif(); // heading
-            particle_instance_chunk[3] = 0.0f32;  // padding
+        for particle_instance_chunk in initial_particle_data.iter_mut() {
+            particle_instance_chunk.pos_x = unif(); // posx
+            particle_instance_chunk.pos_y = unif(); // posy
+            particle_instance_chunk.heading = unif(); // heading
         }
 
         // creates two buffers of agent data each of size NUM_AGENTS
@@ -146,13 +401,7 @@ impl PipelineConfiguration {
         let mut agent_buffers = Vec::<wgpu::Buffer>::new();
         for i in 0..2 {
             agent_buffers.push(
-                device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some(&format!("Particle Buffer {i}")),
-                    contents: bytemuck::cast_slice(&initial_particle_data),
-                    usage: wgpu::BufferUsages::VERTEX
-                        | wgpu::BufferUsages::STORAGE
-                        | wgpu::BufferUsages::COPY_DST,
-                }),
+                PipelineSharedBuffers::create_agent_buffer( device, &initial_particle_data )
             );
         }
 
@@ -188,7 +437,8 @@ impl PipelineConfiguration {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | 
                 wgpu::TextureUsages::RENDER_ATTACHMENT | 
                 wgpu::TextureUsages::STORAGE_BINDING |
-                wgpu::TextureUsages::COPY_SRC,
+                wgpu::TextureUsages::COPY_SRC |
+                wgpu::TextureUsages::COPY_DST,
             label: None,
             view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
         };
@@ -238,50 +488,13 @@ impl PipelineConfiguration {
                 control_texture,
 
                 sim_param_data,
-                sim_param_buffer
+                sim_param_buffer,
+                sim_param_data_dirty: false
             }
         }
     }
 }
 
-// this is Pod
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub struct SimulationParameters
-{
-    sense_angle: f32,
-    sense_offset: f32,
-    step: f32,
-    rotate_angle: f32,
-    max_chemo: f32,
-    deposit_chemo: f32,
-    decay_chemo: f32,
-    width: u32,
-    height: u32,
-    control_alpha: f32,
-    num_agents: u32,
-}
-
-impl SimulationParameters
-{
-    fn serialize(& self) -> String
-    {
-        return format!("sa{:.2}_so{:.2}_step{:.2}_ra{:.2}_decay{:.2}_N{}",
-            self.sense_angle,
-            self.sense_offset,
-            self.step,
-            self.rotate_angle,
-            self.decay_chemo,
-            self.num_agents
-        ).to_string();
-    }
-}
-
-const LOGICAL_WIDTH : u32 = 1280;
-const LOGICAL_HEIGHT : u32 = 800;
-
-unsafe impl Zeroable for SimulationParameters {}
-unsafe impl Pod for SimulationParameters {}
-// unsafe impl NoUninit for SimulationParameters {}
 
 impl Pipeline {
     pub fn required_limits() -> wgpu::Limits {
@@ -347,8 +560,6 @@ impl Pipeline {
             height,
 
             frame_num: 0,
-
-            sim_param_data_dirty: false,
         }
     }
 
@@ -361,7 +572,7 @@ impl Pipeline {
         &mut self,
         alpha: f32 ) {
         self.shared_buffers.sim_param_data.control_alpha = alpha;
-        self.sim_param_data_dirty = true;
+        self.shared_buffers.sim_param_data_dirty = true;
     }
 
     pub fn get_shared_buffers( &mut self ) -> &mut PipelineSharedBuffers
@@ -499,7 +710,7 @@ impl Pipeline {
     {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        if self.sim_param_data_dirty
+        if self.shared_buffers.sim_param_data_dirty
         {
             let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&"buffer data"),
@@ -515,7 +726,7 @@ impl Pipeline {
                 std::mem::size_of::<SimulationParameters>() as wgpu::BufferAddress,
             );
             queue.submit(Some(encoder.finish()));
-            self.sim_param_data_dirty = false;
+            self.shared_buffers.sim_param_data_dirty = false;
         }
     }
 
@@ -540,6 +751,14 @@ impl Pipeline {
         self.frame_num += 1;
 
         queue.submit(Some(command_encoder.finish()));
+    }
+
+    /// Used for test, reset the frame number so that predictable bind groups are used
+    pub fn reset_frame_num(
+        &mut self
+    )
+    {
+        self.frame_num = 0;
     }
 
     pub fn render(
@@ -1271,7 +1490,7 @@ impl ExecutableStage for UpdateAgentsPipelineStage
                 command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
             cpass.set_pipeline(&self.pipeline);
             cpass.set_bind_group(0, &self.bind_groups[frame_num % 2], &[]);
-            cpass.dispatch_workgroups(shared_buffers.sim_param_data.num_agents/64, 1, 1);
+            cpass.dispatch_workgroups(shared_buffers.sim_param_data.num_agents/64 + 1, 1, 1);
         }
         command_encoder.pop_debug_group();
     }
