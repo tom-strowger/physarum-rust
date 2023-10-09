@@ -1,7 +1,7 @@
 use nanorand::{Rng, WyRand};
 use std::{borrow::Cow, mem};
 use wgpu::{util::DeviceExt, Origin3d, ImageCopyTexture};
-use chrono::Utc;
+use chrono::{Utc, Local};
 use bytemuck::{Pod, Zeroable};
 use serde::{Serialize, Deserialize};
 use std::io::Write;
@@ -12,8 +12,8 @@ use std::io::Write;
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct AgentData
 {
-    pub pos_x: f32,  // normalised 0 to 1 
-    pub pos_y: f32,  // normalised 0 to 1 
+    pub pos_x: f32,  // normalised 0 to 1, left to right.
+    pub pos_y: f32,  // normalised 0 to 1, top to bottom.
     pub heading: f32,  // normalised 0 to 1  which maps to 0 to 2pi radians. 0 is up, pi is down, pi/2 is right, 3pi/2 is left
     pub padding: f32,
 }
@@ -227,14 +227,14 @@ impl PipelineSharedBuffers {
         self.upload_buffer( device, queue, bytemuck::cast_slice(&agent_data), &self.agent_buffers[index]);
     }
 
-    fn create_agent_read_buffer(
+    fn create_read_buffer(
         device : &wgpu::Device,
         size: usize
     ) -> wgpu::Buffer
     {
         let data = vec![0; size];
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some(&format!("Temp agent read buffer")),
+            label: Some(&format!("Temp read buffer")),
             contents: &data,
             usage: 
                 wgpu::BufferUsages::COPY_DST
@@ -251,7 +251,7 @@ impl PipelineSharedBuffers {
     {        
         let source_buffer = &self.agent_buffers[index];
         let size = source_buffer.size();
-        let read_buffer = PipelineSharedBuffers::create_agent_read_buffer( device, size as usize );
+        let read_buffer = PipelineSharedBuffers::create_read_buffer( device, size as usize );
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
@@ -276,6 +276,62 @@ impl PipelineSharedBuffers {
         let u8_data: Vec<u8> = buffer_slice.get_mapped_range().into_iter().map(|&x|x).collect();
 
         (bytemuck::cast_slice(&u8_data).to_vec())
+    }
+
+
+    fn get_texture_data( & self, 
+        device : &wgpu::Device,
+        queue: &wgpu::Queue,
+        texture: &wgpu::Texture ) -> Vec<u8>
+    {        
+        let size = texture.size();
+        let read_buffer = PipelineSharedBuffers::create_read_buffer( device, ( size.height * size.width * 4 ) as usize );
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        encoder.copy_texture_to_buffer(
+            wgpu::ImageCopyTexture{
+                texture,
+                aspect: wgpu::TextureAspect::default(),
+                mip_level: 0,
+                origin: wgpu::Origin3d::default()
+            },
+            wgpu::ImageCopyBuffer{
+                buffer: &read_buffer,
+                layout: wgpu::ImageDataLayout{
+                    offset: 0,
+                    bytes_per_row: Some( size.width * 4 ),   // RGBA
+                    rows_per_image: Some( size.height )
+                }
+            },
+            wgpu::Extent3d{ 
+                width: size.width, 
+                height: size.height,
+                depth_or_array_layers: 1
+            }
+        );
+        queue.submit(Some(encoder.finish()));
+
+        let buffer_slice = read_buffer.slice(..);
+
+        buffer_slice.map_async(wgpu::MapMode::Read,|slice| {
+        if let Err(_) = slice {
+                panic!("failed to map buffer");
+            }
+        });
+        device.poll(wgpu::Maintain::Wait);
+
+        let u8_data: Vec<u8> = buffer_slice.get_mapped_range().into_iter().map(|&x|x).collect();
+
+        bytemuck::cast_slice(&u8_data).to_vec()
+    }
+
+
+    pub fn get_new_dots_data( &mut self, 
+        device : &wgpu::Device,
+        queue: &wgpu::Queue ) -> Vec<u8>
+    {   
+        self.get_texture_data(device, queue, &self.new_dots_texture)
     }
 }
 
@@ -580,7 +636,7 @@ impl Pipeline {
         &mut self.shared_buffers
     }
 
-    pub fn save_image(&self, 
+    pub fn save_chemo_image(&self, 
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         file_name_prefix: &str)
@@ -599,10 +655,10 @@ impl Pipeline {
     {
         
         // get the date time
-        let now = Utc::now();
+        let now = Local::now();
 
         // make a directory for the dump
-        let dump_dir = format!("dump_{}", now.format("%Y%m%d_%H%M"));
+        let dump_dir: String = format!("dump_{}", now.format("%Y%m%d_%H%M%S"));
         std::fs::create_dir(dump_dir.as_str()).unwrap();
 
         // dump the parameters as json
@@ -632,6 +688,8 @@ impl Pipeline {
             queue, 
             &&self.shared_buffers.new_dots_texture, 
             format!("{}/new_dots.png", dump_dir).as_str() );
+
+        println!("Dumped texture to {}", dump_dir);
     }
         
 

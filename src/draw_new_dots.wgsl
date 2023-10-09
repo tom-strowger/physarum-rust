@@ -25,18 +25,15 @@ fn main_vs(
     @builtin(instance_index) index: u32
 
 ) -> @builtin(position) vec4<f32> {
-    // let angle = -atan2(particle_vel.x, particle_vel.y);
-    // let pos = vec2<f32>(
-    //     position.x * cos(angle) - position.y * sin(angle),
-    //     position.x * sin(angle) + position.y * cos(angle)
-    // );
 
-    let particle_pos = agents[index].pos;
+    var particle_pos = agents[index].pos;
+
+    // Vertex coords are 0 to 1 == bottom to top, but  the agent y data is opposite this
+    particle_pos[1] = 1.0 - particle_pos[1];
 
     var offset = vec2<f32>(-0.5, -0.5);
 
     let pos = (vertex_position + ((particle_pos) + offset)* 2.0);
-    // let pos = (vertex_position + particle_pos) + vec2(-0.5, -0.5);
 
     return vec4<f32>(pos, 0.0, 1.0);
 }

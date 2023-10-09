@@ -184,7 +184,7 @@ impl framework::Example for Application {
 
             let now = Utc::now();
 
-            self.pipeline.save_image(
+            self.pipeline.save_chemo_image(
                 device, 
                 queue, 
                 format!( "chemo_{}",  now.format("%Y%m%d_%H%M%S") ).as_str() );
@@ -294,7 +294,28 @@ mod online_tests {
 
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
+    use serde::de;
     use wgpu::{util::DeviceExt};
+
+    #[derive(Copy, Clone, Debug)]
+    struct Point
+    {
+        x: u32,
+        y: u32,
+    }
+
+    #[derive(Copy, Clone, Debug)]
+    struct Size
+    {
+        width: u32,
+        height: u32,
+    }
+
+    struct Image
+    {
+        size: Size,
+        data: Vec<u8>
+    }
 
     fn create_image_with_vertical_line(
         width: u32,
@@ -326,27 +347,68 @@ mod online_tests {
         (img_data)
     }
 
-    fn create_image_with_horizontal_gradient(
-        width: u32,
-        height: u32,
-        left_colour: [u8; 4],
-        right_colour: [u8; 4] ) -> Vec<u8>
+
+    fn create_image(
+        image_size: Size,
+        colour: [u8; 4],) -> Image
     {
-        // scale the texture data to fit the texture
         let mut img_data = Vec::new();
-        img_data.reserve((width * height * 4) as usize);
-        for y in 0..height {
-            for x in 0..width {
+        img_data.reserve((image_size.width * image_size.height * 4) as usize);
 
-                let mix = x as f32 / width as f32;
-                for (l,r) in zip(left_colour, right_colour) {
-                    img_data.push( ( l as f32 * (1.0-mix) + r as f32 * mix ) as u8 );
-                }
-
+        for _ in 0..(image_size.width * image_size.height){
+            for i in 0..colour.len(){
+                img_data.push( colour[i] );
             }
         }
+        Image {
+            size: image_size,
+            data: img_data
+        }
+    }
 
-        (img_data)
+    fn add_horitontal_gradient_to_image(
+        image: &mut Image,
+        gradient_size: Size,
+        gradient_pos: Point,
+        left_colour: [u8; 4],
+        right_colour: [u8; 4], )
+    {
+        for x in 0..gradient_size.width {
+
+            let mix = x as f32 / gradient_size.width as f32;
+            for y in 0..gradient_size.height {
+
+                let mix = x as f32 / gradient_size.width as f32;
+
+                let image_x = x + gradient_pos.x;
+                let image_y = y + gradient_pos.y;
+
+                if image_x > 0 && image_x < image.size.width &&
+                    image_y > 0 && image_y < image.size.height {
+                    
+                    let image_index = ( image_x + image_y * image.size.width ) as usize;
+                    
+                    // Copy over the rgba data, performing a linear mix
+                    for (i,(l,r)) in zip(left_colour, right_colour).enumerate() {
+                        let pixel_rgb_channel_index = image_index * 4 + i;
+                        image.data[pixel_rgb_channel_index] = ( l as f32 * (1.0-mix) + r as f32 * mix ) as u8;
+                    }
+        
+                }
+            }
+        }
+    }
+
+    fn create_image_with_horizontal_gradient(
+        image_size: Size,
+        gradient_size: Size,
+        gradient_pos: Point,
+        left_colour: [u8; 4],
+        right_colour: [u8; 4], ) -> Image
+    {
+        let mut image = create_image(image_size, [0,0,0,0]);
+        add_horitontal_gradient_to_image( &mut image, gradient_size, gradient_pos, left_colour, right_colour);
+        image
     }
 
     fn create_texture_with_vertical_line(
@@ -379,27 +441,104 @@ mod online_tests {
         (texture)
     }
 
-    fn test_pipeline_agent_step(
+    fn test_agents_deposit(
         pipeline: &mut Pipeline,
         device : &wgpu::Device,
         queue: &wgpu::Queue)
     {
-        println!("----test_pipeline_agent_step----");
+        println!("----test_all_agents_turn_to_face_ascending_gradient----");
 
         // GIVEN
         // A chemo texture which is dark to light from left to right
         let (width, height) = pipeline.get_shared_buffers().get_chemo_texture_width_height();
-        let chemo_data = create_image_with_horizontal_gradient(width, height, [0,0,0,0], [255,255,255,255]);
-        pipeline.get_shared_buffers().upload_to_chemo_texture(device, queue, width, height, &chemo_data);
+        let chemo_image = create_image_with_horizontal_gradient(
+            Size{ width, height }, 
+            Size{ width, height },
+            Point { x: 0, y: 0 },
+            [0, 0, 0, 0], 
+            [255, 255, 255, 255]);
+        pipeline.get_shared_buffers().upload_to_chemo_texture(device, queue, width, height, &chemo_image.data);
+
+        let half_point_width = 0.5 / ( width as f32 );
+        let half_point_height = 0.5 / ( height as f32 );
+
+        // And four agents at different positions
+        let mut agents = vec![
+            AgentData::init( 0.1, 0.8, 0.52 ),
+            AgentData::init( 0.2, 0.1, 0.98 ),
+            AgentData::init( 0.6, 0.8, 0.02 ),
+            AgentData::init( 0.7, 0.1, 0.23 )];
+
+        // Put each agent squarely in the middle of a fragment
+        for a in &mut agents {
+            a.pos_x -= half_point_width;
+            a.pos_y -= half_point_height;
+        }
+        pipeline.get_shared_buffers().set_agent_data(
+            device, queue, 0,
+            agents.to_vec());
+
+        // WHEN
+        // I compute a step
+        pipeline.compute_step(device, queue);
+
+        // THEN
+        // The agent positions update correctly, they should all turn and point to increasing chemo.  Which is left to right
+        let new_dots_data = pipeline.get_shared_buffers().get_new_dots_data(device, queue);
+
+        let new_dot_positions : Vec<usize> = new_dots_data.chunks(4).enumerate()
+            .map(|(i,x)| if x[0]>128{ Some(i) }else{ None })
+            .filter(|x|x.is_some())
+            .map(|x|x.unwrap())
+            .collect();
+
+        let mut agent_positions : Vec<usize> = agents.iter().map(|a|{
+            let x = (a.pos_x * width as f32) as u32;
+            let y = (a.pos_y * height as f32) as u32;
+            (x + y * width) as usize
+        }).collect();
+
+        agent_positions.sort();
+
+        assert!( new_dot_positions == agent_positions );
+
+        // AFTER
+        // Reset the frame number for the next test
+        pipeline.reset_frame_num();
+
+        println!("    \\-- OK ");
+
+    }
+
+    fn test_all_agents_turn_to_face_ascending_gradient(
+        pipeline: &mut Pipeline,
+        device : &wgpu::Device,
+        queue: &wgpu::Queue)
+    {
+        println!("----test_all_agents_turn_to_face_ascending_gradient----");
+
+        // GIVEN
+        // A chemo texture which is dark to light from left to right
+        let (width, height) = pipeline.get_shared_buffers().get_chemo_texture_width_height();
+        let chemo_image = create_image_with_horizontal_gradient(
+            Size{ width, height }, 
+            Size{ width, height },
+            Point { x: 0, y: 0 },
+            [0, 0, 0, 0], 
+            [255, 255, 255, 255]);
+        pipeline.get_shared_buffers().upload_to_chemo_texture(device, queue, width, height, &chemo_image.data);
 
         // And four agents facing in different directions
+        // The agents sense ahead and slightly to the left and right, 
+        // so they are postioned such that there is a large gradient
+        // between left and right. That way they will turn.
         pipeline.get_shared_buffers().set_agent_data(
             device, queue, 0,
             vec![
             AgentData::init( 0.2, 0.8, 0.52 ),   // facing descending gradient
             AgentData::init( 0.2, 0.1, 0.98 ),   // facing descending gradient
-            AgentData::init( 0.4, 0.8, 0.02 ),   // facing ascending gradient
-            AgentData::init( 0.4, 0.1, 0.23 )]); // facing ascending gradient
+            AgentData::init( 0.7, 0.8, 0.02 ),   // facing ascending gradient
+            AgentData::init( 0.7, 0.1, 0.23 )]); // facing ascending gradient
 
         // WHEN
         // I compute a step
@@ -408,11 +547,200 @@ mod online_tests {
         // THEN
         // The agent positions update correctly, they should all turn and point to increasing chemo.  Which is left to right
         let agent_data = pipeline.get_shared_buffers().get_agent_data(device, queue, 1);
-        // println!("Agents = \n- {:?} \n- {:?} \n- {:?} \n- {:?}", agent_data[0], agent_data[1], agent_data[2], agent_data[3] );
         assert!(agent_data[0].heading >= 0.00 || agent_data[0].heading <= 0.50 );
         assert!(agent_data[1].heading >= 0.00 || agent_data[1].heading <= 0.50 );
         assert!(agent_data[2].heading >= 0.00 || agent_data[1].heading <= 0.50 );
         assert!(agent_data[3].heading >= 0.00 || agent_data[1].heading <= 0.50 );
+
+        // AFTER
+        // Reset the frame number for the next test
+        pipeline.reset_frame_num();
+
+        println!("    \\-- OK ");
+
+    }
+
+    fn test_only_the_agent_that_should_turn_does_top_left(
+        pipeline: &mut Pipeline,
+        device : &wgpu::Device,
+        queue: &wgpu::Queue)
+    {
+        println!("----test_only_the_agent_that_should_turn_does_top_left----");
+
+        // GIVEN
+        // A chemo texture which is dark to light from left to right, but only covers the top-left quarter of the screen
+        let (width, height) = pipeline.get_shared_buffers().get_chemo_texture_width_height();
+        // let chemo_image = create_image( Size{ width, height }, [0, 0, 0, 0] );
+        let chemo_image = create_image_with_horizontal_gradient(
+            Size{ width, height }, 
+            Size{ width: width / 2, height: height / 2 },
+            Point { x: 0, y: 0 },
+            [0, 0, 0, 0], 
+            [255, 255, 255, 255]);
+        pipeline.get_shared_buffers().upload_to_chemo_texture(device, queue, width, height, &chemo_image.data);
+
+        // And four agents facing to the left
+        pipeline.get_shared_buffers().set_agent_data(
+            device, queue, 0,
+            vec![
+            AgentData::init( 0.2, 0.1, 0.52 ),   // top left
+            AgentData::init( 0.2, 0.8, 0.52 ),   // bottom left
+            AgentData::init( 0.7, 0.1, 0.52 ),   // top right
+            AgentData::init( 0.7, 0.8, 0.52 )]); // bottom right
+
+        // WHEN
+        // I compute a step
+        pipeline.compute_step(device, queue);
+
+        // THEN
+        // Only the top-left agent should change as it detects an increase gradient in a different direction
+        let agent_data = pipeline.get_shared_buffers().get_agent_data(device, queue, 1);
+        assert!(agent_data[0].heading < 0.52 );
+        assert!(agent_data[1].heading == 0.52 );
+        assert!(agent_data[2].heading == 0.52 );
+        assert!(agent_data[3].heading == 0.52 );
+
+        // AFTER
+        // Reset the frame number for the next test
+        pipeline.reset_frame_num();
+
+        println!("    \\-- OK ");
+
+    }
+
+    fn test_only_the_agent_that_should_turn_does_bottom_left(
+        pipeline: &mut Pipeline,
+        device : &wgpu::Device,
+        queue: &wgpu::Queue)
+    {
+        println!("----test_only_the_agent_that_should_turn_does_bottom_left----");
+
+        // GIVEN
+        // A chemo texture which is dark to light from left to right, but only covers the top-left quarter of the screen
+        let (width, height) = pipeline.get_shared_buffers().get_chemo_texture_width_height();
+        let chemo_image = create_image_with_horizontal_gradient(
+            Size{ width, height }, 
+            Size{ width: width / 2, height: height / 2 },
+            Point { x: 0, y: height / 2 },
+            [0, 0, 0, 0], 
+            [255, 255, 255, 255]);
+        pipeline.get_shared_buffers().upload_to_chemo_texture(device, queue, width, height, &chemo_image.data);
+
+        // And four agents facing to the left
+        pipeline.get_shared_buffers().set_agent_data(
+            device, queue, 0,
+            vec![
+            AgentData::init( 0.2, 0.1, 0.52 ),   // top left
+            AgentData::init( 0.2, 0.8, 0.52 ),   // bottom left
+            AgentData::init( 0.7, 0.1, 0.52 ),   // top right
+            AgentData::init( 0.7, 0.8, 0.52 )]); // bottom right
+
+        // WHEN
+        // I compute a step
+        pipeline.compute_step(device, queue);
+
+        // THEN
+        // Only the top-left agent should change as it detects an increase gradient in a different direction
+        let agent_data = pipeline.get_shared_buffers().get_agent_data(device, queue, 1);
+        assert!(agent_data[0].heading == 0.52 );
+        assert!(agent_data[1].heading < 0.52 );
+        assert!(agent_data[2].heading == 0.52 );
+        assert!(agent_data[3].heading == 0.52 );
+
+        // AFTER
+        // Reset the frame number for the next test
+        pipeline.reset_frame_num();
+
+        println!("    \\-- OK ");
+
+    }
+
+    fn test_only_the_agent_that_should_turn_does_top_right(
+        pipeline: &mut Pipeline,
+        device : &wgpu::Device,
+        queue: &wgpu::Queue)
+    {
+        println!("----test_only_the_agent_that_should_turn_does_top_right----");
+
+        // GIVEN
+        // A chemo texture which is dark to light from left to right, but only covers the top-left quarter of the screen
+        let (width, height) = pipeline.get_shared_buffers().get_chemo_texture_width_height();
+        // let chemo_image = create_image( Size{ width, height }, [0, 0, 0, 0] );
+        let chemo_image = create_image_with_horizontal_gradient(
+            Size{ width, height }, 
+            Size{ width: width / 2, height: height / 2 },
+            Point { x: width / 2, y: 0 },
+            [0, 0, 0, 0], 
+            [255, 255, 255, 255]);
+        pipeline.get_shared_buffers().upload_to_chemo_texture(device, queue, width, height, &chemo_image.data);
+
+        // And four agents facing to the left
+        pipeline.get_shared_buffers().set_agent_data(
+            device, queue, 0,
+            vec![
+            AgentData::init( 0.2, 0.1, 0.52 ),   // top left
+            AgentData::init( 0.2, 0.8, 0.52 ),   // bottom left
+            AgentData::init( 0.7, 0.1, 0.52 ),   // top right
+            AgentData::init( 0.7, 0.8, 0.52 )]); // bottom right
+
+        // WHEN
+        // I compute a step
+        pipeline.compute_step(device, queue);
+
+        // THEN
+        // Only the top-left agent should change as it detects an increase gradient in a different direction
+        let agent_data = pipeline.get_shared_buffers().get_agent_data(device, queue, 1);
+        assert!(agent_data[0].heading == 0.52 );
+        assert!(agent_data[1].heading == 0.52 );
+        assert!(agent_data[2].heading < 0.52 );
+        assert!(agent_data[3].heading == 0.52 );
+
+        // AFTER
+        // Reset the frame number for the next test
+        pipeline.reset_frame_num();
+
+        println!("    \\-- OK ");
+
+    }
+
+    fn test_only_the_agent_that_should_turn_does_bottom_right(
+        pipeline: &mut Pipeline,
+        device : &wgpu::Device,
+        queue: &wgpu::Queue)
+    {
+        println!("----test_only_the_agent_that_should_turn_does_bottom_right----");
+
+        // GIVEN
+        // A chemo texture which is dark to light from left to right, but only covers the top-left quarter of the screen
+        let (width, height) = pipeline.get_shared_buffers().get_chemo_texture_width_height();
+        let chemo_image = create_image_with_horizontal_gradient(
+            Size{ width, height }, 
+            Size{ width: width / 2, height: height / 2 },
+            Point { x: width / 2, y: height / 2 },
+            [0, 0, 0, 0], 
+            [255, 255, 255, 255]);
+        pipeline.get_shared_buffers().upload_to_chemo_texture(device, queue, width, height, &chemo_image.data);
+
+        // And four agents facing to the left
+        pipeline.get_shared_buffers().set_agent_data(
+            device, queue, 0,
+            vec![
+            AgentData::init( 0.2, 0.1, 0.52 ),   // top left
+            AgentData::init( 0.2, 0.8, 0.52 ),   // bottom left
+            AgentData::init( 0.7, 0.1, 0.52 ),   // top right
+            AgentData::init( 0.7, 0.8, 0.52 )]); // bottom right
+
+        // WHEN
+        // I compute a step
+        pipeline.compute_step(device, queue);
+
+        // THEN
+        // Only the top-left agent should change as it detects an increase gradient in a different direction
+        let agent_data = pipeline.get_shared_buffers().get_agent_data(device, queue, 1);
+        assert!(agent_data[0].heading == 0.52 );
+        assert!(agent_data[1].heading == 0.52 );
+        assert!(agent_data[2].heading == 0.52 );
+        assert!(agent_data[3].heading < 0.52 );
 
         // AFTER
         // Reset the frame number for the next test
@@ -429,7 +757,13 @@ mod online_tests {
     ) {
         println!("Beginning tests");
 
-        test_pipeline_agent_step( pipeline, device, queue );
+        test_agents_deposit( pipeline, device, queue );
+
+        test_all_agents_turn_to_face_ascending_gradient( pipeline, device, queue );
+        test_only_the_agent_that_should_turn_does_top_left( pipeline, device, queue );
+        test_only_the_agent_that_should_turn_does_bottom_left(pipeline, device, queue );
+        test_only_the_agent_that_should_turn_does_top_right( pipeline, device, queue );
+        test_only_the_agent_that_should_turn_does_bottom_right(pipeline, device, queue );
 
         println!("Testing done");
     }
