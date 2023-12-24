@@ -1,12 +1,12 @@
 use rand;
 use std::{borrow::Cow, mem};
 use wgpu::{util::DeviceExt, Origin3d, ImageCopyTexture};
-use chrono::{Utc, Local};
 use bytemuck::{Pod, Zeroable};
 use serde::{Serialize, Deserialize};
 use std::io::Write;
 
-
+#[cfg(not(target_arch = "wasm32"))]
+use chrono::Local;
 
 // this is Pod
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
@@ -666,6 +666,8 @@ impl Pipeline {
 
     }
 
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn dump_debug_textures(&self, 
         device: &wgpu::Device,
         queue: &wgpu::Queue)
@@ -707,6 +709,15 @@ impl Pipeline {
             format!("{}/new_dots.png", dump_dir).as_str() );
 
         println!("Dumped texture to {}", dump_dir);
+    }
+
+    
+    #[cfg(target_arch = "wasm32")]
+    pub fn dump_debug_textures(&self, 
+        device: &wgpu::Device,
+        queue: &wgpu::Queue)
+    {
+        log::warn!("dump_debug_textures not implemented for wasm32")
     }
         
 

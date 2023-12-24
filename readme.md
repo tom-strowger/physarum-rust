@@ -1,6 +1,10 @@
 
 # Physarum simulation
 
+## Prerequisites
+- Rust is installed and `cargo` is available in the path
+- (If building wasm) `cargo install wasm-bindgen-cli`
+
 ## Data:
 - Agents (positions + headings).  Access by index.  Double-buffered
 - Chemo 2d texture.  Accessed by x,y position. Double-buffered

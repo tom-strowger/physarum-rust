@@ -10,6 +10,7 @@ use pipeline::{
 /// 
 use winit::event::{self, WindowEvent};
 use chrono::Utc;
+use web_time;  // When not targetting wasm32, this is a wrapper around std::time
 
 mod pipeline;
 use crate::pipeline::Pipeline;
@@ -28,7 +29,7 @@ struct Application {
     dump: bool,
 
     // next time to render
-    next_render_time: std::time::Instant,
+    next_render_time: web_time::Instant,
 }
 
 const LOGICAL_WIDTH : u32 = 1280;
@@ -59,11 +60,11 @@ impl framework::Example for Application {
             pipeline: Pipeline::init(config, device, queue, 
                 PipelineConfiguration::default(device, config, queue)),
 
-            running: false,
+            running: true,
             save: false,
             dump: false,
 
-            next_render_time: std::time::Instant::now(),
+            next_render_time: web_time::Instant::now(),
         }
     }
 
@@ -159,7 +160,7 @@ impl framework::Example for Application {
         _: &mut bool
     ) {
         
-        let time_to_render = FRAME_RATE_LIMIT.is_none() || std::time::Instant::now() >= self.next_render_time;
+        let time_to_render = FRAME_RATE_LIMIT.is_none() || web_time::Instant::now() >= self.next_render_time;
 
         if time_to_render
         {
@@ -272,7 +273,8 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     let mut test_mode = false;
-
+    
+    #[cfg(not(target_arch = "wasm32"))]
     for a in &args[1..]{
         match a.as_str()
         {
@@ -286,6 +288,7 @@ fn main() {
     } else {
         framework::run::<Application>("Physarum", (LOGICAL_WIDTH, LOGICAL_HEIGHT));
     }
+
 }
 
 /// These are a group of tests that can run "online" (with a real pipeline/wgpu adapter)
