@@ -111,6 +111,8 @@ async fn setup<E: Example>(title: &str, logical_size: (u32, u32)) -> Setup {
     #[cfg(target_arch = "wasm32")]
     {
         use winit::platform::web::WindowExtWebSys;
+        use console_log;
+        use console_error_panic_hook;
         let query_string = web_sys::window().unwrap().location().search().unwrap();
         let level: log::Level = parse_url_query_string(&query_string, "RUST_LOG")
             .and_then(|x| x.parse().ok())
@@ -454,6 +456,7 @@ impl Spawner {
 
     #[allow(dead_code)]
     pub fn spawn_local(&self, future: impl Future<Output = ()> + 'static) {
+        use wasm_bindgen_futures;
         wasm_bindgen_futures::spawn_local(future);
     }
 }
@@ -465,12 +468,13 @@ pub fn run<E: Example>(title: &str, logical_size: (u32, u32)) {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn run<E: Example>(title: &str) {
+pub fn run<E: Example>(title: &str, logical_size: (u32, u32)) {
     use wasm_bindgen::{prelude::*, JsCast};
+    use wasm_bindgen_futures;
 
     let title = title.to_owned();
     wasm_bindgen_futures::spawn_local(async move {
-        let setup = setup::<E>(&title).await;
+        let setup = setup::<E>(&title, logical_size).await;
         let start_closure = Closure::once_into_js(move || start::<E>(setup));
 
         // make sure to handle JS exceptions thrown inside start.

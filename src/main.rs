@@ -59,7 +59,7 @@ impl framework::Example for Application {
             pipeline: Pipeline::init(config, device, queue, 
                 PipelineConfiguration::default(device, config, queue)),
 
-            running: true,
+            running: false,
             save: false,
             dump: false,
 

@@ -1,4 +1,4 @@
-use nanorand::{Rng, WyRand};
+use rand;
 use std::{borrow::Cow, mem};
 use wgpu::{util::DeviceExt, Origin3d, ImageCopyTexture};
 use chrono::{Utc, Local};
@@ -381,35 +381,52 @@ impl PipelineConfiguration {
 
         // buffer for simulation parameters uniform
 
-        // a pleasing textural set
+        // larger scale
         // let sim_param_data = SimulationParameters
         // {
-        //     sense_angle: 15.0,
-        //     sense_offset: 3.0,
+        //     sense_angle: 20.0,
+        //     sense_offset: 5.0,
         //     step: 3.0,
-        //     rotate_angle: 5.0,
+        //     rotate_angle: 25.0,
         //     max_chemo: 5.0,
         //     deposit_chemo: 1.0,
         //     decay_chemo: 0.10,
         //     width: config.width,
         //     height: config.height,
+        //     control_alpha: 0.0,
         //     num_agents: 1 << 20,
         // };
-        
-        let sim_param_data: SimulationParameters = SimulationParameters
+
+        // a pleasing textural set
+        let sim_param_data = SimulationParameters
         {
-            sense_angle: 15.0,
-            sense_offset: 4.0,
-            step: 3.5,
-            rotate_angle: 18.0,
-            max_chemo: 5.0,
+            sense_angle: 12.0,
+            sense_offset: 5.0,
+            step: 3.0,
+            rotate_angle: 15.0,
+            max_chemo: 3.0,
             deposit_chemo: 1.0,
             decay_chemo: 0.10,
             width: config.width,
             height: config.height,
-            control_alpha: 0.2,
+            control_alpha: 0.0,
             num_agents: 1 << 20,
         };
+        
+        // let sim_param_data: SimulationParameters = SimulationParameters
+        // {
+        //     sense_angle: 15.0,
+        //     sense_offset: 4.0,
+        //     step: 3.5,
+        //     rotate_angle: 18.0,
+        //     max_chemo: 5.0,
+        //     deposit_chemo: 1.0,
+        //     decay_chemo: 0.10,
+        //     width: config.width,
+        //     height: config.height,
+        //     control_alpha: 0.2,
+        //     num_agents: 1 << 20,
+        // };
 
         let sim_param_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Simulation Parameter Buffer"),
@@ -444,8 +461,8 @@ impl PipelineConfiguration {
             };
             sim_param_data.num_agents as usize];
         
-        let mut rng = WyRand::new_seed(42);
-        let mut unif = || rng.generate::<f32>(); // Generate a num (0, 1)
+        // let mut rng = rand::random::<f32>();
+        let mut unif = || rand::random::<f32>(); // Generate a num (0, 1)
         for particle_instance_chunk in initial_particle_data.iter_mut() {
             particle_instance_chunk.pos_x = unif(); // posx
             particle_instance_chunk.pos_y = unif(); // posy
@@ -1548,7 +1565,7 @@ impl ExecutableStage for UpdateAgentsPipelineStage
                 command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
             cpass.set_pipeline(&self.pipeline);
             cpass.set_bind_group(0, &self.bind_groups[frame_num % 2], &[]);
-            cpass.dispatch_workgroups(shared_buffers.sim_param_data.num_agents/64 + 1, 1, 1);
+            cpass.dispatch_workgroups(shared_buffers.sim_param_data.num_agents/128 + 1, 1, 1);
         }
         command_encoder.pop_debug_group();
     }

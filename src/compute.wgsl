@@ -66,11 +66,15 @@ fn sense_at_location(pos: vec2<f32>)->f32{
   // let control_sample = textureLoad(control_texture, vec2<u32>( pos ), 0);
 
   // Red repels, blue attracts
-  return chemo_sample * ( 1.0 - control_sample.r ) * (1.0 + control_sample.b);
+  // return chemo_sample * ( 1.0 - control_sample.r ) * (1.0 + control_sample.b);
+
+  return chemo_sample - control_sample.r * chemo_sample * chemo_sample;
+
+  // return chemo_sample;
 }
 
 @compute
-@workgroup_size(64)
+@workgroup_size(128)
 fn main(@builtin(global_invocation_id) global_invocation_id: vec3<u32>) {
   let total = arrayLength(&agents_in);
   let index = global_invocation_id.x;
