@@ -89,7 +89,104 @@ struct OffscreenCanvasSetup {
     bitmap_renderer: ImageBitmapRenderingContext,
 }
 
-async fn setup<E: Example>(title: &str, logical_size: (u32, u32)) -> Setup {
+#[cfg(test)]
+pub mod test 
+{
+    pub struct Setup {
+        setup: super::Setup,
+        config: wgpu::SurfaceConfiguration
+    }
+
+    impl Setup {
+        pub fn create() -> Setup {
+            
+            let setup = pollster::block_on(super::setup::<TestRunner>("test", (1280, 800)));
+            
+            let mut config = setup.surface
+                .get_default_config(&setup.adapter, setup.size.width, setup.size.height)
+                .expect("Surface isn't supported by the adapter.");
+            let surface_view_format = config.format.add_srgb_suffix();
+            config.view_formats.push(surface_view_format);
+            setup.surface.configure(&setup.device, &config);
+
+            Setup {
+                setup,
+                config
+            }
+        }
+
+        pub fn get_device(&self) -> &wgpu::Device {
+            &self.setup.device
+        }
+
+        pub fn get_queue(&self) -> &wgpu::Queue {
+            &self.setup.queue
+        }
+
+        pub fn get_config(&self) -> &wgpu::SurfaceConfiguration {
+            &self.config
+        }
+    }
+
+    struct TestRunner {
+    }
+    
+    impl super::Example for TestRunner {
+        fn required_limits() -> wgpu::Limits {
+            wgpu::Limits::downlevel_defaults()
+        }
+    
+        fn required_downlevel_capabilities() -> wgpu::DownlevelCapabilities {
+            wgpu::DownlevelCapabilities {
+                flags: wgpu::DownlevelFlags::COMPUTE_SHADERS,
+                ..Default::default()
+            }
+        }
+    
+        /// constructs initial instance of Example struct
+        fn init(
+            config: &wgpu::SurfaceConfiguration,
+            _adapter: &wgpu::Adapter,
+            device: &wgpu::Device,
+            queue: &wgpu::Queue,
+        ) -> Self {
+    
+            TestRunner { }
+        }
+    
+        /// update is called for any WindowEvent not handled by the framework
+        fn update(&mut self, event: winit::event::WindowEvent) {
+            //empty
+        }
+    
+        /// resize is called on WindowEvent::Resized events
+        fn resize(
+            &mut self,
+            sc_desc: &wgpu::SurfaceConfiguration,
+            _device: &wgpu::Device,
+            _queue: &wgpu::Queue,
+        ) {
+        }
+    
+        /// render is called each frame, dispatching compute groups proportional
+        ///   a TriangleList draw call for all NUM_PARTICLES at 3 vertices each
+        fn render(
+            &mut self,
+            view: &wgpu::TextureView,
+            texture: &wgpu::Texture,
+            device: &wgpu::Device,
+            queue: &wgpu::Queue,
+            _: &super::Spawner,
+            should_exit: &mut bool
+        ) {
+        }
+    }
+
+}
+
+
+
+pub async fn setup<E: Example>(title: &str, logical_size: (u32, u32)) -> Setup {
     #[cfg(not(target_arch = "wasm32"))]
     {
         env_logger::init();

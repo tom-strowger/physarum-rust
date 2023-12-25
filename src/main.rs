@@ -201,103 +201,18 @@ impl framework::Example for Application {
     }
 }
 
-
-struct TestRunner {
-    pipeline: Pipeline
-}
-
-impl framework::Example for TestRunner {
-    fn required_limits() -> wgpu::Limits {
-        wgpu::Limits::downlevel_defaults()
-    }
-
-    fn required_downlevel_capabilities() -> wgpu::DownlevelCapabilities {
-        wgpu::DownlevelCapabilities {
-            flags: wgpu::DownlevelFlags::COMPUTE_SHADERS,
-            ..Default::default()
-        }
-    }
-
-    /// constructs initial instance of Example struct
-    fn init(
-        config: &wgpu::SurfaceConfiguration,
-        _adapter: &wgpu::Adapter,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> Self {
-
-        // returns Example struct and No encoder commands
-        TestRunner {
-            pipeline: Pipeline::init(config, device, queue, 
-                PipelineConfiguration::default(device, config, queue))
-        }
-    }
-
-    /// update is called for any WindowEvent not handled by the framework
-    fn update(&mut self, event: winit::event::WindowEvent) {
-        //empty
-    }
-
-    /// resize is called on WindowEvent::Resized events
-    fn resize(
-        &mut self,
-        sc_desc: &wgpu::SurfaceConfiguration,
-        _device: &wgpu::Device,
-        _queue: &wgpu::Queue,
-    ) {
-        let w = sc_desc.width;
-        let h = sc_desc.height;
-
-        self.pipeline.resize(w, h);
-    }
-
-    /// render is called each frame, dispatching compute groups proportional
-    ///   a TriangleList draw call for all NUM_PARTICLES at 3 vertices each
-    fn render(
-        &mut self,
-        view: &wgpu::TextureView,
-        texture: &wgpu::Texture,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        _: &framework::Spawner,
-        should_exit: &mut bool
-    ) {
-        online_tests::test_pipeline( &mut self.pipeline, device, queue  );
-        *should_exit = true;
-    }
-}
-
 /// run example
 fn main() {
-    // parse command line arguments
-    let args: Vec<String> = env::args().collect();
-
-    let mut test_mode = false;
-    
-    #[cfg(not(target_arch = "wasm32"))]
-    for a in &args[1..]{
-        match a.as_str()
-        {
-            "--test" => test_mode = true,
-            _ => println!("Unhandled argument {}",a),
-        }
-    }
-
-    if test_mode {
-        framework::run::<TestRunner>("Physarum", (LOGICAL_WIDTH, LOGICAL_HEIGHT));
-    } else {
-        framework::run::<Application>("Physarum", (LOGICAL_WIDTH, LOGICAL_HEIGHT));
-    }
-
+    framework::run::<Application>("Physarum", (LOGICAL_WIDTH, LOGICAL_HEIGHT));
 }
 
 /// These are a group of tests that can run "online" (with a real pipeline/wgpu adapter)
-mod online_tests {
+#[cfg(test)]
+mod tests {
     use std::iter::zip;
 
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
-    use serde::de;
     use wgpu::{util::DeviceExt};
 
     #[derive(Copy, Clone, Debug)]
@@ -420,7 +335,7 @@ mod online_tests {
         width: u32,
         height: u32) -> wgpu::Texture
     {
-        let image_data = online_tests::create_image_with_vertical_line( width, height );
+        let image_data = create_image_with_vertical_line( width, height );
 
         let texture_descriptor = wgpu::TextureDescriptor {
             size: wgpu::Extent3d {
@@ -444,12 +359,17 @@ mod online_tests {
         (texture)
     }
 
-    fn test_agents_deposit(
-        pipeline: &mut Pipeline,
-        device : &wgpu::Device,
-        queue: &wgpu::Queue)
+    #[test]
+    fn test_agents_deposit()
     {
-        println!("----test_all_agents_turn_to_face_ascending_gradient----");
+        let test_setup = framework::test::Setup::create();
+
+        let mut device = test_setup.get_device();
+        let mut queue = test_setup.get_queue();
+        let config = test_setup.get_config();
+
+        let mut pipeline = Pipeline::init(config, device, queue, 
+            PipelineConfiguration::default(device, config, queue));
 
         // GIVEN
         // A chemo texture which is dark to light from left to right
@@ -760,7 +680,7 @@ mod online_tests {
     ) {
         println!("Beginning tests");
 
-        test_agents_deposit( pipeline, device, queue );
+        test_agents_deposit();
 
         test_all_agents_turn_to_face_ascending_gradient( pipeline, device, queue );
         test_only_the_agent_that_should_turn_does_top_left( pipeline, device, queue );
