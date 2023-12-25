@@ -25,9 +25,29 @@
             ],
         },
         {
+            "name": "Online tests (windows)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "preLaunchTask": "rust: cargo build",
+            "program": "${workspaceRoot}/target/debug/physarum.exe",
+            "args": ["--online_test"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceRoot}",
+            "environment": [
+                {
+                    "name": "RUST_BACKTRACE",
+                    "value": "1"
+                },
+                {
+                    "name": "WGPU_ADAPTER_NAME",
+                    "value": "AMD Radeon RX 6800"
+                }
+            ],
+        },
+        {
             "type": "lldb",
             "request": "launch",
-            "name": "Run 'physarum'",
+            "name": "Run 'physarum' (lldb)",
             "cargo": {
                 "args": [
                     "build",
@@ -45,7 +65,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Test 'physarum'",
+            "name": "Test 'physarum' (lldb)",
             "cargo": {
                 "args": [
                     "build",
@@ -57,7 +77,7 @@
                     "kind": "bin"
                 }
             },
-            "args": [ "--test" ],
+            "args": [ "--online_test" ],
             "cwd": "${workspaceFolder}"
         }
     ]

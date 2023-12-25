@@ -202,11 +202,11 @@ impl framework::Example for Application {
 }
 
 
-struct TestRunner {
+struct OnlineTestRunner {
     pipeline: Pipeline
 }
 
-impl framework::Example for TestRunner {
+impl framework::Example for OnlineTestRunner {
     fn required_limits() -> wgpu::Limits {
         wgpu::Limits::downlevel_defaults()
     }
@@ -227,7 +227,7 @@ impl framework::Example for TestRunner {
     ) -> Self {
 
         // returns Example struct and No encoder commands
-        TestRunner {
+        OnlineTestRunner {
             pipeline: Pipeline::init(config, device, queue, 
                 PipelineConfiguration::default(device, config, queue))
         }
@@ -272,19 +272,20 @@ fn main() {
     // parse command line arguments
     let args: Vec<String> = env::args().collect();
 
-    let mut test_mode = false;
+    let mut online_test_mode = false;
     
     #[cfg(not(target_arch = "wasm32"))]
     for a in &args[1..]{
         match a.as_str()
         {
-            "--test" => test_mode = true,
+            "--online_test" => online_test_mode = true,
             _ => println!("Unhandled argument {}",a),
         }
     }
 
-    if test_mode {
-        framework::run::<TestRunner>("Physarum", (LOGICAL_WIDTH, LOGICAL_HEIGHT));
+    if online_test_mode {
+        // @todo Implement a custom test harness for these tests (using just the main thread)
+        framework::run::<OnlineTestRunner>("Physarum", (LOGICAL_WIDTH, LOGICAL_HEIGHT));
     } else {
         framework::run::<Application>("Physarum", (LOGICAL_WIDTH, LOGICAL_HEIGHT));
     }
