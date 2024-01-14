@@ -48,6 +48,7 @@ pub struct SimulationParameters
     height: u32,
     control_alpha: f32,
     num_agents: u32,
+    chemo_squared_detractor: f32,
 }
 
 impl SimulationParameters
@@ -381,20 +382,21 @@ impl PipelineConfiguration {
 
         // buffer for simulation parameters uniform
 
-        // larger scale
+        // // larger scale
         // let sim_param_data = SimulationParameters
         // {
         //     sense_angle: 20.0,
-        //     sense_offset: 5.0,
-        //     step: 3.0,
-        //     rotate_angle: 25.0,
+        //     sense_offset: 4.0,
+        //     step: 0.6,
+        //     rotate_angle: 4.0,
         //     max_chemo: 5.0,
-        //     deposit_chemo: 1.0,
-        //     decay_chemo: 0.10,
+        //     deposit_chemo: 0.8,
+        //     decay_chemo: 0.06,
         //     width: config.width,
         //     height: config.height,
         //     control_alpha: 0.0,
         //     num_agents: 1 << 20,
+        //     chemo_squared_detractor: 0.59,
         // };
 
         // a pleasing textural set
@@ -402,8 +404,11 @@ impl PipelineConfiguration {
         {
             sense_angle: 12.0,
             sense_offset: 5.0,
-            step: 3.0,
-            rotate_angle: 15.0,
+            step: 0.6,
+            rotate_angle: 5.0,
+            
+            // step: 3.0,
+            // rotate_angle: 15.0,
             max_chemo: 3.0,
             deposit_chemo: 1.0,
             decay_chemo: 0.10,
@@ -411,6 +416,7 @@ impl PipelineConfiguration {
             height: config.height,
             control_alpha: 0.0,
             num_agents: 1 << 20,
+            chemo_squared_detractor: 0.6,
         };
         
         // let sim_param_data: SimulationParameters = SimulationParameters
@@ -426,6 +432,7 @@ impl PipelineConfiguration {
         //     height: config.height,
         //     control_alpha: 0.2,
         //     num_agents: 1 << 20,
+        //     chemo_squared_detractor: 0.7,
         // };
 
         let sim_param_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -721,11 +728,10 @@ impl Pipeline {
     }
         
 
-    fn write_texture_to_image(&self, 
+    fn get_texture_data(&self, 
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        texture: &wgpu::Texture,
-        file_name: &str)
+        texture: &wgpu::Texture) -> Vec<u8>
     {
         let buffer_data = vec![0.0f32; (4 * self.width * self.height) as usize];
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -771,12 +777,25 @@ impl Pipeline {
 
         let data = buffer_slice.get_mapped_range();
         let buf = data.to_vec();
-        let img = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(width, height, buf).unwrap();
+        drop(data);
+        buffer.unmap();
+
+        buf
+    }   
+
+    fn write_texture_to_image(&self, 
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        texture: &wgpu::Texture,
+        file_name: &str)
+    {
+        let width = self.width;
+        let height = self.height;
+
+        let data = self.get_texture_data( device, queue, texture );
+        let img = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(width, height, data).unwrap();
 
         img.save(file_name).unwrap();
-        drop(data);
-
-        buffer.unmap();
     }
 
     pub fn resize(

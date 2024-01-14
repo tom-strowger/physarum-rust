@@ -14,6 +14,9 @@ struct SimParams {
   decay_chemo : f32,
   sim_width : u32,
   sim_height : u32,
+  control_alpha: f32,
+  num_agents: u32,
+  chemo_squared_detractor: f32
 };
 
 
@@ -60,8 +63,11 @@ fn sample_texture_control(tex: texture_2d<f32>, pos: vec2<f32>)->vec4<f32>{
 }
 
 fn sense_at_location(pos: vec2<f32>)->f32{
-  let chemo_sample = sample_texture(chemo_texture, pos).r;
+  var chemo_sample = sample_texture(chemo_texture, pos).r;
   let control_sample = sample_texture_control(control_texture, pos);
+
+  // Add a detractor to over-concentration
+  chemo_sample -= (chemo_sample * chemo_sample) * params.chemo_squared_detractor;
 
   // let control_sample = textureLoad(control_texture, vec2<u32>( pos ), 0);
 
