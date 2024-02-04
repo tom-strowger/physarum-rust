@@ -191,6 +191,33 @@ impl PipelineSharedBuffers {
         (buffer)
     }
 
+    fn load_and_scale_image_rgba8(
+        image_path: &String,
+        height: u32,
+        width: u32 ) -> Vec<u8>
+    {
+        let img = image::open(image_path).unwrap().to_rgba8();
+        let img_dimensions = img.dimensions();
+        let img_data = img.into_raw();
+
+        // scale the texture data to fit the texture
+        let mut scaled_img_data = Vec::new();
+        scaled_img_data.reserve((width * height * 4) as usize);
+        for y in 0..height {
+            for x in 0..width {
+                let scaled_x = (x as f32 / width as f32 * img_dimensions.0 as f32) as u32;
+                let scaled_y = (y as f32 / height as f32 * img_dimensions.1 as f32) as u32;
+                let scaled_index = (scaled_y * img_dimensions.0 + scaled_x) as usize * 4;
+                scaled_img_data.push(img_data[scaled_index]);
+                scaled_img_data.push(img_data[scaled_index + 1]);
+                scaled_img_data.push(img_data[scaled_index + 2]);
+                scaled_img_data.push(img_data[scaled_index + 3]);
+            }
+        }   
+
+        scaled_img_data
+    }
+
     pub fn upload_buffer(
         &self,
         device: &wgpu::Device,
@@ -404,11 +431,8 @@ impl PipelineConfiguration {
         {
             sense_angle: 12.0,
             sense_offset: 5.0,
-            step: 0.6,
-            rotate_angle: 5.0,
-            
-            // step: 3.0,
-            // rotate_angle: 15.0,
+            step: 2.0,
+            rotate_angle: 15.0,
             max_chemo: 3.0,
             deposit_chemo: 1.0,
             decay_chemo: 0.10,
@@ -467,13 +491,69 @@ impl PipelineConfiguration {
                 padding: 0.0,
             };
             sim_param_data.num_agents as usize];
-        
-        // let mut rng = rand::random::<f32>();
+
         let mut unif = || rand::random::<f32>(); // Generate a num (0, 1)
-        for particle_instance_chunk in initial_particle_data.iter_mut() {
-            particle_instance_chunk.pos_x = unif(); // posx
-            particle_instance_chunk.pos_y = unif(); // posy
-            particle_instance_chunk.heading = unif(); // heading
+        
+        // check if there is an image to load to the distribution of agents at the start
+        let seed_image_path = "seed.png";
+        
+        // If there is a seed image, then use it to determine the distribution of agents at the beginning.
+        if std::path::Path::new(seed_image_path).exists() {
+            // scale the texture data to fit the texture
+            let scaled_img_data = PipelineSharedBuffers::load_and_scale_image_rgba8( &seed_image_path.to_string(), config.height, config.width);
+            let scaled_pixel_data : Vec<[u8;4]> = scaled_img_data
+                .chunks(4)
+                .map(|a| {
+                    [a[0], a[1], a[2], a[3]]
+                }).collect();
+
+            let mut get_position_from_seed = ||{
+                let mut x = unif();
+                let mut y = unif();
+
+                // An agent will only be placed at a position if random number
+                // is less than the normalised intensity at that position
+                let mut valid = false;
+                while !valid {
+                    let im_x = (x * (config.width as f32)) as u32;
+                    let im_y = (y * (config.height as f32)) as u32;
+                    let pixel_index = (im_x + im_y * config.width) as usize;
+                    let pixel_data = scaled_pixel_data[pixel_index];
+                    let im_intensity = 
+                        (pixel_data[0] as f32 / 255.0 + 
+                         pixel_data[1] as f32 / 255.0 + 
+                         pixel_data[2] as f32 / 255.0) 
+                        *  pixel_data[3] as f32 / 255.0 // Apply alpha
+                        / 3.0;  // Normalise 
+
+                    if unif() < im_intensity {
+                        valid = true;
+                    }
+                    else {
+                        // Try again at another position
+                        x = unif();
+                        y = unif();
+                    }
+                }
+
+                (x,y)
+            };
+
+            for particle_instance_chunk in initial_particle_data.iter_mut() {
+
+                let (x, y) = get_position_from_seed();
+
+                particle_instance_chunk.pos_x = x; // posx
+                particle_instance_chunk.pos_y = y; // posy
+                particle_instance_chunk.heading = unif(); // heading
+            }
+        }
+        else {
+            for particle_instance_chunk in initial_particle_data.iter_mut() {
+                particle_instance_chunk.pos_x = unif(); // posx
+                particle_instance_chunk.pos_y = unif(); // posy
+                particle_instance_chunk.heading = unif(); // heading
+            } 
         }
 
         // creates two buffers of agent data each of size NUM_AGENTS
@@ -530,27 +610,11 @@ impl PipelineConfiguration {
         let control_texture;
 
         // check if there is an image to load to the control texture
-        let image_path = "control.png";
+        let control_image_path = "control.png";
         
-        if std::path::Path::new(image_path).exists() {
-            let img = image::open(image_path).unwrap().to_rgba8();
-            let img_dimensions = img.dimensions();
-            let img_data = img.into_raw();
-
+        if std::path::Path::new(control_image_path).exists() {
             // scale the texture data to fit the texture
-            let mut scaled_img_data = Vec::new();
-            scaled_img_data.reserve((config.width * config.height * 4) as usize);
-            for y in 0..config.height {
-                for x in 0..config.width {
-                    let scaled_x = (x as f32 / config.width as f32 * img_dimensions.0 as f32) as u32;
-                    let scaled_y = (y as f32 / config.height as f32 * img_dimensions.1 as f32) as u32;
-                    let scaled_index = (scaled_y * img_dimensions.0 + scaled_x) as usize * 4;
-                    scaled_img_data.push(img_data[scaled_index]);
-                    scaled_img_data.push(img_data[scaled_index + 1]);
-                    scaled_img_data.push(img_data[scaled_index + 2]);
-                    scaled_img_data.push(img_data[scaled_index + 3]);
-                }
-            }            
+            let scaled_img_data = PipelineSharedBuffers::load_and_scale_image_rgba8( &control_image_path.to_string(), config.height, config.width);
             control_texture = device.create_texture_with_data(queue, &chemo_texture_descriptor, &scaled_img_data );
         }
         else {

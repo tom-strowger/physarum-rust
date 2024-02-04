@@ -32,7 +32,7 @@ struct Application {
     next_render_time: web_time::Instant,
 }
 
-const LOGICAL_WIDTH : u32 = 1280;
+const LOGICAL_WIDTH : u32 = 800;
 const LOGICAL_HEIGHT : u32 = 800;
 
 impl framework::Example for Application {
@@ -60,7 +60,7 @@ impl framework::Example for Application {
             pipeline: Pipeline::init(config, device, queue, 
                 PipelineConfiguration::default(device, config, queue)),
 
-            running: true,
+            running: false,
             save: false,
             dump: false,
 

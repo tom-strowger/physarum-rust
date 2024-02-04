@@ -10,6 +10,7 @@ target/
 # Saved images
 *.png
 !control.png
+!seed.png
 
 # Dumps
 dump_*/
