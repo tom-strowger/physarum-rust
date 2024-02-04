@@ -409,13 +409,30 @@ impl PipelineConfiguration {
 
         // buffer for simulation parameters uniform
 
-        // // larger scale
+        // larger scale
+        let sim_param_data = SimulationParameters
+        {
+            sense_angle: 20.0,
+            sense_offset: 5.0,
+            step: 3.0,
+            rotate_angle: 25.0,
+            max_chemo: 5.0,
+            deposit_chemo: 1.0,
+            decay_chemo: 0.10,
+            width: config.width,
+            height: config.height,
+            control_alpha: 0.0,
+            num_agents: 1 << 20,
+            chemo_squared_detractor: 0.59,
+        };
+
+        // // a pleasing textural set
         // let sim_param_data = SimulationParameters
         // {
-        //     sense_angle: 20.0,
-        //     sense_offset: 4.0,
-        //     step: 0.6,
-        //     rotate_angle: 4.0,
+        //     sense_angle: 12.0,
+        //     sense_offset: 3.0,
+        //     step: 2.0,
+        //     rotate_angle: 13.0,
         //     max_chemo: 5.0,
         //     deposit_chemo: 0.8,
         //     decay_chemo: 0.06,
@@ -425,23 +442,6 @@ impl PipelineConfiguration {
         //     num_agents: 1 << 20,
         //     chemo_squared_detractor: 0.59,
         // };
-
-        // a pleasing textural set
-        let sim_param_data = SimulationParameters
-        {
-            sense_angle: 12.0,
-            sense_offset: 5.0,
-            step: 2.0,
-            rotate_angle: 15.0,
-            max_chemo: 3.0,
-            deposit_chemo: 1.0,
-            decay_chemo: 0.10,
-            width: config.width,
-            height: config.height,
-            control_alpha: 0.0,
-            num_agents: 1 << 20,
-            chemo_squared_detractor: 0.6,
-        };
         
         // let sim_param_data: SimulationParameters = SimulationParameters
         // {
