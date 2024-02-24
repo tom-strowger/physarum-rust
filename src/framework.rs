@@ -3,6 +3,7 @@ use std::future::Future;
 use std::str::FromStr;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
+use web_sys::wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{ImageBitmapRenderingContext, OffscreenCanvas};
 use winit::{
@@ -89,6 +90,22 @@ struct OffscreenCanvasSetup {
     bitmap_renderer: ImageBitmapRenderingContext,
 }
 
+#[cfg(target_arch = "wasm32")]
+fn get_descendent_with_name(node: &web_sys::Node, name: &str) -> Option<web_sys::Node> {
+    let nodes = node.child_nodes();
+    for i in 0..nodes.length() {
+        if let Ok(el) = nodes.get(i).unwrap().dyn_into::<web_sys::Element>() {
+            if el.id() == name {
+                return Some(el.dyn_into::<web_sys::Node>().unwrap());
+            }
+        }
+        if let Some(x) = get_descendent_with_name(&nodes.get(i).unwrap(), name) {
+            return Some(x);
+        }
+    }
+    return None;
+}
+
 async fn setup<E: Example>(title: &str, logical_size: (u32, u32)) -> Setup {
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -124,8 +141,22 @@ async fn setup<E: Example>(title: &str, logical_size: (u32, u32)) -> Setup {
             .and_then(|win| win.document())
             .and_then(|doc| doc.body())
             .and_then(|body| {
-                body.append_child(&web_sys::Element::from(window.canvas()))
-                    .ok()
+                // Find the div with the id "physarum-canvas" and append the canvas to it
+                let nodes = body.child_nodes();
+
+                
+
+                if let Some(x) = get_descendent_with_name(&body, "physarum-canvas") {
+                    return Some(x);
+                }
+
+                // Fall back to appending the child to the body
+                return Some(body.dyn_into::<web_sys::Node>().unwrap());
+            })
+            .and_then(|el|{
+                el.append_child(&web_sys::Element::from(window.canvas()))
+                .ok();
+                Some(el)
             })
             .expect("couldn't append canvas to document body");
     }
