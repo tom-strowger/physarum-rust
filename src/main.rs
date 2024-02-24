@@ -32,7 +32,16 @@ struct Application {
     next_render_time: web_time::Instant,
 }
 
-const LOGICAL_WIDTH : u32 = 800;
+fn hex_to_f32_4(hex: String) -> [f32; 4] {
+    let hex = hex.trim_start_matches('#');
+    let r = u8::from_str_radix(&hex[0..2], 16).unwrap() as f32 / 255.0;
+    let g = u8::from_str_radix(&hex[2..4], 16).unwrap() as f32 / 255.0;
+    let b = u8::from_str_radix(&hex[4..6], 16).unwrap() as f32 / 255.0;
+    let a = 1.0;
+    [r, g, b, a]
+}
+
+const LOGICAL_WIDTH : u32 = 1280;
 const LOGICAL_HEIGHT : u32 = 800;
 
 impl framework::Example for Application {
@@ -55,12 +64,90 @@ impl framework::Example for Application {
         queue: &wgpu::Queue,
     ) -> Self {
 
+        let mut pipeline = Pipeline::init(config, device, queue, 
+            PipelineConfiguration::default(device, config, queue));
+
+        let mut running = true;
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let query_string = web_sys::window().unwrap().location().search().unwrap();
+
+            if let Some(bg_colour_param) =
+                framework::parse_url_query_string(&query_string, "bg_colour")
+            {
+                let bg_colour : String = bg_colour_param.parse().unwrap();
+                pipeline.set_background_colour(hex_to_f32_4(bg_colour));
+            }
+
+            if let Some(fg_colour_param) =
+                framework::parse_url_query_string(&query_string, "fg_colour")
+            {
+                let fg_colour : String = fg_colour_param.parse().unwrap();
+                pipeline.set_foreground_colour(hex_to_f32_4(fg_colour));
+            }
+
+            if let Some(rotate_angle_param) = 
+                framework::parse_url_query_string(&query_string, "rotate_angle")
+            {
+                let rotate_angle : f32 = rotate_angle_param.parse().unwrap();
+                pipeline.set_rotate_angle(rotate_angle);
+            }
+
+            if let Some(sense_angle_param) = 
+                framework::parse_url_query_string(&query_string, "sense_angle")
+            {
+                let rotate_angle : f32 = sense_angle_param.parse().unwrap();
+                pipeline.set_sense_angle(rotate_angle);
+            }
+
+            if let Some(sense_offset_param) = 
+                framework::parse_url_query_string(&query_string, "sense_offset")
+            {
+                let rotate_angle : f32 = sense_offset_param.parse().unwrap();
+                pipeline.set_sense_offset(rotate_angle);
+            }
+
+            if let Some(step_size_param) = 
+                framework::parse_url_query_string(&query_string, "step_size")
+            {
+                let rotate_angle : f32 = step_size_param.parse().unwrap();
+                pipeline.set_step_size(rotate_angle);
+            }
+
+            if let Some(num_agents_param) = 
+                framework::parse_url_query_string(&query_string, "num_agents")
+            {
+                let rotate_angle : u32 = num_agents_param.parse().unwrap();
+                pipeline.set_num_agents(rotate_angle);
+            }
+
+            if let Some(decay_param) = 
+                framework::parse_url_query_string(&query_string, "decay")
+            {
+                let rotate_angle : f32 = decay_param.parse().unwrap();
+                pipeline.set_decay(rotate_angle);
+            }
+
+            if let Some(deposit_param) = 
+                framework::parse_url_query_string(&query_string, "deposit")
+            {
+                let rotate_angle : f32 = deposit_param.parse().unwrap();
+                pipeline.set_deposit(rotate_angle);
+            }
+
+            if let Some(running_param) = 
+                framework::parse_url_query_string(&query_string, "running")
+            {
+                let running_value : bool = running_param.parse().unwrap();
+                running = running_value;
+            }
+        }
+
         // returns Example struct and No encoder commands
         Application {
-            pipeline: Pipeline::init(config, device, queue, 
-                PipelineConfiguration::default(device, config, queue)),
-
-            running: false,
+            pipeline: pipeline,
+            running: running,
             save: false,
             dump: false,
 
@@ -283,11 +370,33 @@ fn main() {
         }
     }
 
+    let mut logical_width = LOGICAL_WIDTH;
+    let mut logical_height = LOGICAL_HEIGHT;
+    #[cfg(target_arch = "wasm32")]
+    {
+        let query_string = web_sys::window().unwrap().location().search().unwrap();
+
+        if let Some(width_param) =
+            framework::parse_url_query_string(&query_string, "width")
+        {
+            let width : u32 = width_param.parse().unwrap();
+            logical_width = width;
+        }
+
+        if let Some(height_param) =
+            framework::parse_url_query_string(&query_string, "height")
+        {
+            let height : u32 = height_param.parse().unwrap();
+            logical_height = height;
+        }
+        
+    }
+
     if online_test_mode {
         // @todo Implement a custom test harness for these tests (using just the main thread)
-        framework::run::<OnlineTestRunner>("Physarum", (LOGICAL_WIDTH, LOGICAL_HEIGHT));
+        framework::run::<OnlineTestRunner>("Physarum", (logical_width, logical_height));
     } else {
-        framework::run::<Application>("Physarum", (LOGICAL_WIDTH, LOGICAL_HEIGHT));
+        framework::run::<Application>("Physarum", (logical_width, logical_height));
     }
 
 }
@@ -772,3 +881,18 @@ mod online_tests {
         println!("Testing done");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hex_to_f32_4() {
+        assert_eq!(hex_to_f32_4("#00000000".to_string()), [0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(hex_to_f32_4("#FF0000FF".to_string()), [1.0, 0.0, 0.0, 1.0]);
+        assert_eq!(hex_to_f32_4("#00FF00FF".to_string()), [0.0, 1.0, 0.0, 1.0]);
+        assert_eq!(hex_to_f32_4("#0000FFFF".to_string()), [0.0, 0.0, 1.0, 1.0]);
+        assert_eq!(hex_to_f32_4("#FFFFFFFF".to_string()), [1.0, 1.0, 1.0, 1.0]);
+    }
+}
+        

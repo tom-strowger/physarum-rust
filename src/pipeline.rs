@@ -37,6 +37,11 @@ unsafe impl Pod for AgentData {}
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct SimulationParameters
 {
+    // These array members are first in the byte layout of the struct, whether or not they are declared first.
+    // ... so they are declared first to make the layout more intuitive when accessed in the shader code.
+    background_colour: [f32; 4],  // RGBA
+    foreground_colour: [f32; 4],  // RGBA
+
     sense_angle: f32,
     sense_offset: f32,
     step: f32,
@@ -48,7 +53,7 @@ pub struct SimulationParameters
     height: u32,
     control_alpha: f32,
     num_agents: u32,
-    chemo_squared_detractor: f32,
+    chemo_squared_detractor: f32
 }
 
 impl SimulationParameters
@@ -65,9 +70,6 @@ impl SimulationParameters
         ).to_string();
     }
 }
-
-const LOGICAL_WIDTH : u32 = 1280;
-const LOGICAL_HEIGHT : u32 = 800;
 
 unsafe impl Zeroable for SimulationParameters {}
 unsafe impl Pod for SimulationParameters {}
@@ -409,21 +411,26 @@ impl PipelineConfiguration {
 
         // buffer for simulation parameters uniform
 
+        let background_colour = [0.0, 0.0, 0.0, 1.0];
+        let foreground_colour = [1.0, 1.0, 1.0, 1.0];
+
         // larger scale
         let sim_param_data = SimulationParameters
         {
-            sense_angle: 20.0,
-            sense_offset: 5.0,
-            step: 3.0,
-            rotate_angle: 25.0,
+            background_colour,
+            foreground_colour,
+            sense_angle: 15.0,
+            sense_offset: 3.0,
+            step: 2.0,
+            rotate_angle: 18.0,
             max_chemo: 5.0,
             deposit_chemo: 1.0,
-            decay_chemo: 0.10,
+            decay_chemo: 0.12,
             width: config.width,
             height: config.height,
             control_alpha: 0.0,
-            num_agents: 1 << 20,
-            chemo_squared_detractor: 0.59,
+            num_agents: 1 << 21,
+            chemo_squared_detractor: 0.0,
         };
 
         // // a pleasing textural set
@@ -434,13 +441,15 @@ impl PipelineConfiguration {
         //     step: 2.0,
         //     rotate_angle: 13.0,
         //     max_chemo: 5.0,
-        //     deposit_chemo: 0.8,
+        //     deposit_chemo: 0.6,
         //     decay_chemo: 0.06,
         //     width: config.width,
         //     height: config.height,
         //     control_alpha: 0.0,
         //     num_agents: 1 << 20,
-        //     chemo_squared_detractor: 0.59,
+        //     chemo_squared_detractor: 0.00,
+            // background_colour,
+            // foreground_colour,
         // };
         
         // let sim_param_data: SimulationParameters = SimulationParameters
@@ -457,6 +466,8 @@ impl PipelineConfiguration {
         //     control_alpha: 0.2,
         //     num_agents: 1 << 20,
         //     chemo_squared_detractor: 0.7,
+            // background_colour,
+            // foreground_colour,
         // };
 
         let sim_param_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -660,8 +671,6 @@ impl Pipeline {
         pipeline_configuration: PipelineConfiguration
     ) -> Self {
 
-        let dpi_factor = config.width as f32 / LOGICAL_WIDTH as f32;
-
         // create a texture sampler
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: None,
@@ -707,6 +716,24 @@ impl Pipeline {
         }
     }
 
+    fn unorm_to_srgb( unorm: f32 ) -> f32
+    {
+        if unorm <= 0.0031308 {
+            unorm * 12.92
+        } else {
+            1.055 * unorm.powf(1.0 / 2.4) - 0.055
+        }
+    }
+
+    fn srgb_to_unorm( srgb: f32 ) -> f32
+    {
+        if srgb <= 0.04045 {
+            srgb / 12.92
+        } else {
+            ((srgb + 0.055) / 1.055).powf(2.4)
+        }
+    }
+
     pub fn get_control_alpha(
         &self ) -> f32 {
         self.shared_buffers.sim_param_data.control_alpha
@@ -716,6 +743,71 @@ impl Pipeline {
         &mut self,
         alpha: f32 ) {
         self.shared_buffers.sim_param_data.control_alpha = alpha;
+        self.shared_buffers.sim_param_data_dirty = true;
+    }
+
+    pub fn set_background_colour(
+        &mut self,
+        colour_srgb: [f32; 4] ) {
+        self.shared_buffers.sim_param_data.background_colour = 
+            colour_srgb.into_iter().map(|x| Pipeline::srgb_to_unorm(x)).collect::<Vec<f32>>().try_into().unwrap();
+        self.shared_buffers.sim_param_data_dirty = true;
+    }
+
+    pub fn set_foreground_colour(
+        &mut self,
+        colour_srgb: [f32; 4] ) {
+        self.shared_buffers.sim_param_data.foreground_colour = 
+            colour_srgb.into_iter().map(|x| Pipeline::srgb_to_unorm(x)).collect::<Vec<f32>>().try_into().unwrap();
+        self.shared_buffers.sim_param_data_dirty = true;
+    }
+
+    pub fn set_sense_angle(
+        &mut self,
+        sense_angle: f32 ) {
+        self.shared_buffers.sim_param_data.sense_angle = sense_angle;
+        self.shared_buffers.sim_param_data_dirty = true;
+    }
+
+    pub fn set_sense_offset(
+        &mut self,
+        sense_offset: f32 ) {
+        self.shared_buffers.sim_param_data.sense_offset = sense_offset;
+        self.shared_buffers.sim_param_data_dirty = true;
+    }
+
+    pub fn set_step_size(
+        &mut self,
+        step: f32 ) {
+        self.shared_buffers.sim_param_data.step = step;
+        self.shared_buffers.sim_param_data_dirty = true;
+    }
+
+    pub fn set_rotate_angle(
+        &mut self,
+        rotate_angle: f32 ) {
+        self.shared_buffers.sim_param_data.rotate_angle = rotate_angle;
+        self.shared_buffers.sim_param_data_dirty = true;
+    }
+
+    pub fn set_num_agents(
+        &mut self,
+        num_agents: u32 ) {
+        self.shared_buffers.sim_param_data.num_agents = num_agents;
+        self.shared_buffers.sim_param_data_dirty = true;
+    }
+
+    pub fn set_decay(
+        &mut self,
+        decay: f32 ) {
+        self.shared_buffers.sim_param_data.decay_chemo = decay;
+        self.shared_buffers.sim_param_data_dirty = true;
+    }
+
+    pub fn set_deposit(
+        &mut self,
+        deposit: f32 ) {
+        self.shared_buffers.sim_param_data.deposit_chemo = deposit;
         self.shared_buffers.sim_param_data_dirty = true;
     }
 

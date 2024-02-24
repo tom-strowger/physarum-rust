@@ -4,6 +4,8 @@ struct Particle {
 };
 
 struct SimParams {
+  background_colour: vec4<f32>,  // RGBA
+  foreground_colour: vec4<f32>,  // RGBA
   sense_angle : f32,
   sense_offset : f32,
   step : f32,

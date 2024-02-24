@@ -5,6 +5,8 @@ struct Particle {
 };
 
 struct SimParams {
+  background_colour: vec4<f32>,  // RGBA
+  foreground_colour: vec4<f32>,  // RGBA
   sense_angle : f32,
   sense_offset : f32,
   step : f32,
@@ -15,6 +17,8 @@ struct SimParams {
   sim_width : u32,
   sim_height : u32,
   control_alpha : f32,
+  num_agents: u32,
+  chemo_squared_detractor: f32
 };
 
 @group(0) @binding(0) var<uniform> params : SimParams;
@@ -48,6 +52,9 @@ fn main_fs(
 
   // This transform makes it appear less grey/washed out
   chemo_value = pow( chemo_value, vec4<f32>(2.0, 2.0, 2.0, 1.0) );
+
+  // Apply the foreground/background colours
+  chemo_value = mix(params.background_colour, params.foreground_colour, chemo_value.r);
   
   var control_value = textureLoad(control_texture, index, 0);
 

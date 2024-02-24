@@ -5,6 +5,8 @@ struct Particle {
 };
 
 struct SimParams {
+  background_colour: vec4<f32>,  // RGBA
+  foreground_colour: vec4<f32>,  // RGBA
   deltaT : f32,
   rule1Distance : f32,
   rule2Distance : f32,
