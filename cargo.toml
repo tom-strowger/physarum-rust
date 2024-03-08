@@ -3,6 +3,15 @@ name = "physarum"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "physarum"
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[[bin]]
+name = "physarum"
+path = "src/main.rs"
+
 [dependencies]
 wgpu = "0.17.2"
 getrandom = { version = "0.2", features = ["js"] }

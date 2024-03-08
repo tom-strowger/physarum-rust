@@ -10,22 +10,23 @@
 - `cargo run --release`
 
 ### WebGPU version
-- `./build_wash.sh`
+- `./build_wasm.sh`
 - `./host_locally.sh`
 - Open localhost::8000 in the browser, optionally specifying parameters
--- `width` int
--- `height` int
--- `step_size` float
--- `rotate_angle` float
--- `sense_angle` float
--- `sense_offset` float
--- `num_agents` int
--- `fg_colour` string e.g. "EEFF89"
--- `bg_colour` string e.g. "4599AA"
--- `decay` float
--- `deposit` float
--- `running` bool
-e.g. localhost::8000?fg_colour=EEFF89&bg_colour=4599AA&width=400&height=400
+  - `width` int
+  - `height` int
+  - `step_size` float
+  - `rotate_angle` float
+  - `sense_angle` float
+  - `sense_offset` float
+  - `num_agents` int
+  - `fg_colour` string e.g. "EEFF89"
+  - `bg_colour` string e.g. "4599AA"
+  - `decay` float
+  - `deposit` float
+  - `running` bool
+
+e.g. <localhost:8000?fg_colour=EEFF89&bg_colour=4599AA&width=400&height=400>
 
 ## Data:
 - Agents (positions + headings).  Access by index.  Double-buffered

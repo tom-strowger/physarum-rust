@@ -106,7 +106,13 @@ fn get_descendent_with_name(node: &web_sys::Node, name: &str) -> Option<web_sys:
     return None;
 }
 
-async fn setup<E: Example>(title: &str, logical_size: (u32, u32)) -> Setup {
+async fn setup<E: Example>(
+    title: &str, 
+    logical_size: (u32, u32),
+    #[cfg(target_arch = "wasm32")]
+    container_name : String
+
+) -> Setup {
     #[cfg(not(target_arch = "wasm32"))]
     {
         env_logger::init();
@@ -141,12 +147,10 @@ async fn setup<E: Example>(title: &str, logical_size: (u32, u32)) -> Setup {
             .and_then(|win| win.document())
             .and_then(|doc| doc.body())
             .and_then(|body| {
-                // Find the div with the id "physarum-canvas" and append the canvas to it
+                // Find the div with the id container_name and append the canvas to it
                 let nodes = body.child_nodes();
 
-                
-
-                if let Some(x) = get_descendent_with_name(&body, "physarum-canvas") {
+                if let Some(x) = get_descendent_with_name(&body, container_name.as_str()) {
                     return Some(x);
                 }
 
@@ -499,13 +503,13 @@ pub fn run<E: Example>(title: &str, logical_size: (u32, u32)) {
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn run<E: Example>(title: &str, logical_size: (u32, u32)) {
+pub fn run<E: Example>(title: &str, logical_size: (u32, u32), container_name : String ) {
     use wasm_bindgen::{prelude::*, JsCast};
     use wasm_bindgen_futures;
 
     let title = title.to_owned();
     wasm_bindgen_futures::spawn_local(async move {
-        let setup = setup::<E>(&title, logical_size).await;
+        let setup = setup::<E>(&title, logical_size, container_name).await;
         let start_closure = Closure::once_into_js(move || start::<E>(setup));
 
         // make sure to handle JS exceptions thrown inside start.
