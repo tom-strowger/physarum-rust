@@ -3,13 +3,14 @@
 
 ## Prerequisites
 - Rust is installed and `cargo` is available in the path
+  - wasm-pack is install via cargo (works for Mac ARM vs npm)
+    `cargo install wasm-pack`
 - `npm` is installed
-   - The modules are installed `npm -i webpack-cli wasm-pack`
+- The modules are installed `npm -i webpack-cli`
 
 ## Building and running
-### Local Rust app
 - `npm run serve`
-- Open localhost::8080 in the browser, optionally specifying parameters
+- Open <localhost::8080> in the browser, optionally specifying parameters
   - `width` int
   - `height` int
   - `step_size` float
