@@ -39,3 +39,6 @@ wasm-bindgen-futures = "*"
 wasm-bindgen = "*"
 console_log = { version = "0.2" }
 js-sys = "*"
+
+[profile.release]
+debug = true

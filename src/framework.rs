@@ -136,6 +136,7 @@ async fn setup<E: Example>(
         use winit::platform::web::WindowExtWebSys;
         use console_log;
         use console_error_panic_hook;
+        console_error_panic_hook::set_once();
         let query_string = web_sys::window().unwrap().location().search().unwrap();
         let level: log::Level = parse_url_query_string(&query_string, "RUST_LOG")
             .and_then(|x| x.parse().ok())

@@ -3,16 +3,13 @@
 
 ## Prerequisites
 - Rust is installed and `cargo` is available in the path
-- (If building wasm) `cargo install wasm-bindgen-cli`
+- `npm` is installed
+   - The modules are installed `npm -i webpack-cli wasm-pack`
 
 ## Building and running
 ### Local Rust app
-- `cargo run --release`
-
-### WebGPU version
-- `./build_wasm.sh`
-- `./host_locally.sh`
-- Open localhost::8000 in the browser, optionally specifying parameters
+- `npm run serve`
+- Open localhost::8080 in the browser, optionally specifying parameters
   - `width` int
   - `height` int
   - `step_size` float
@@ -26,7 +23,7 @@
   - `deposit` float
   - `running` bool
 
-e.g. <localhost:8000?fg_colour=EEFF89&bg_colour=4599AA&width=400&height=400>
+e.g. <localhost:8080?fg_colour=EEFF89&bg_colour=4599AA&width=400&height=400>
 
 ## Data:
 - Agents (positions + headings).  Access by index.  Double-buffered

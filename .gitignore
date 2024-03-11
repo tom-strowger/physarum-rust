@@ -14,3 +14,8 @@ target/
 
 # Dumps
 dump_*/
+
+# npm
+node_modules/
+package-lock.json
+
