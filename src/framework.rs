@@ -106,6 +106,18 @@ fn get_descendent_with_name(node: &web_sys::Node, name: &str) -> Option<web_sys:
     return None;
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn init_web_log() {
+    use console_log;
+    use console_error_panic_hook;
+    console_error_panic_hook::set_once();
+    let query_string = web_sys::window().unwrap().location().search().unwrap();
+    let level: log::Level = parse_url_query_string(&query_string, "RUST_LOG")
+        .and_then(|x| x.parse().ok())
+        .unwrap_or(log::Level::Error);
+    console_log::init_with_level(level).expect("could not initialize logger");
+}
+
 async fn setup<E: Example>(
     title: &str, 
     logical_size: (u32, u32),
@@ -134,14 +146,6 @@ async fn setup<E: Example>(
     #[cfg(target_arch = "wasm32")]
     {
         use winit::platform::web::WindowExtWebSys;
-        use console_log;
-        use console_error_panic_hook;
-        console_error_panic_hook::set_once();
-        let query_string = web_sys::window().unwrap().location().search().unwrap();
-        let level: log::Level = parse_url_query_string(&query_string, "RUST_LOG")
-            .and_then(|x| x.parse().ok())
-            .unwrap_or(log::Level::Error);
-        console_log::init_with_level(level).expect("could not initialize logger");
         std::panic::set_hook(Box::new(console_error_panic_hook::hook));
         // On wasm, append the canvas to the document body
         web_sys::window()
