@@ -31,3 +31,9 @@ pub fn add_simulation_to( container_name : String, val: JsValue ){
     let mut logical_height = options.height.unwrap_or(800);
     framework::run::<Simulation>("Physarum", (logical_width,logical_height), container_name );
 }
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn resize(width: u32, height:u32) -> Result<(), JsError> {
+    framework::send_event( framework::AppEvent::SetSize { width, height } )
+}

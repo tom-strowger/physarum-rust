@@ -3,18 +3,46 @@ use std::future::Future;
 use std::str::FromStr;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
-use web_sys::wasm_bindgen::JsCast;
+use web_sys::wasm_bindgen::{JsCast,JsError};
 #[cfg(target_arch = "wasm32")]
 use web_sys::{ImageBitmapRenderingContext, OffscreenCanvas};
 use winit::{
     event::{self, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
+    event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy},
 };
 
 use log;
 use async_executor;
 use env_logger;
 use pollster;
+
+
+use std::cell::RefCell;
+#[derive(Debug)]
+pub enum AppEvent {
+    Pause {},
+    SetSize { width: u32, height: u32 },
+}
+
+thread_local! {
+    pub static EVENT_LOOP_PROXY: RefCell<Option<EventLoopProxy<AppEvent>>> = RefCell::new(None);
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn send_event(event: AppEvent) -> Result<(), JsError> {
+    EVENT_LOOP_PROXY.with_borrow(|proxy| {
+        proxy
+            .as_ref()
+            .ok_or_else(|| {
+                JsError::new(
+                    "No EventLoopProxy. Did you call wasm_main() before send_custom_event()?",
+                )
+            })?
+            .send_event(event)?;
+
+        Ok(())
+    })
+}
 
 #[allow(dead_code)]
 pub fn cast_slice<T>(data: &[T]) -> &[u8] {
@@ -73,7 +101,7 @@ pub trait Example: 'static + Sized {
 
 struct Setup {
     window: winit::window::Window,
-    event_loop: EventLoop<()>,
+    event_loop: EventLoop<AppEvent>,
     instance: wgpu::Instance,
     size: winit::dpi::PhysicalSize<u32>,
     surface: wgpu::Surface,
@@ -130,7 +158,7 @@ async fn setup<E: Example>(
         env_logger::init();
     };
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
     let mut builder = winit::window::WindowBuilder::new();
     builder = builder.with_title(title)
         .with_inner_size(winit::dpi::LogicalSize::new(logical_size.0, logical_size.1))
@@ -339,6 +367,9 @@ fn start<E: Example>(
     log::info!("Initializing the example...");
     let mut example = E::init(&config, &adapter, &device, &queue);
 
+    let proxy: EventLoopProxy<AppEvent> = event_loop.create_proxy();
+    EVENT_LOOP_PROXY.set(Some(proxy));
+
     #[cfg(not(target_arch = "wasm32"))]
     let mut last_frame_inst = Instant::now();
     #[cfg(not(target_arch = "wasm32"))]
@@ -353,6 +384,16 @@ fn start<E: Example>(
             ControlFlow::Poll
         };
         match event {
+            event::Event::UserEvent(event) => {
+                log::info!( "received user event {:?}", event );
+                match event {
+                    AppEvent::SetSize { width, height } => {
+                    },
+
+                    AppEvent::Pause {} => {
+                    }
+                }
+            }
             event::Event::RedrawEventsCleared => {
                 #[cfg(not(target_arch = "wasm32"))]
                 spawner.run_until_stalled();

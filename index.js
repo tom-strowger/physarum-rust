@@ -11,5 +11,10 @@ import('./pkg')
       }
 
       wasm.add_simulation_to("physarum-canvas", options);
+
+      window.setTimeout(function(){ wasm.resize(800, 800); }, 100);
+
+
+      
     }
     );
