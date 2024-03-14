@@ -3,7 +3,7 @@ use std::future::Future;
 use std::str::FromStr;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
-use web_sys::wasm_bindgen::{JsCast,JsError};
+use web_sys::wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use web_sys::{ImageBitmapRenderingContext, OffscreenCanvas};
 use winit::{
@@ -12,9 +12,6 @@ use winit::{
 };
 
 use log;
-use async_executor;
-use env_logger;
-use pollster;
 
 
 use std::cell::RefCell;
@@ -22,26 +19,6 @@ use std::cell::RefCell;
 pub enum AppEvent {
     Pause {},
     SetSize { width: u32, height: u32 },
-}
-
-thread_local! {
-    pub static EVENT_LOOP_PROXY: RefCell<Option<EventLoopProxy<AppEvent>>> = RefCell::new(None);
-}
-
-#[cfg(target_arch = "wasm32")]
-pub fn send_event(event: AppEvent) -> Result<(), JsError> {
-    EVENT_LOOP_PROXY.with_borrow(|proxy| {
-        proxy
-            .as_ref()
-            .ok_or_else(|| {
-                JsError::new(
-                    "No EventLoopProxy. Did you call wasm_main() before send_custom_event()?",
-                )
-            })?
-            .send_event(event)?;
-
-        Ok(())
-    })
 }
 
 #[allow(dead_code)]
@@ -59,6 +36,7 @@ pub enum ShaderStage {
 }
 
 pub trait Example: 'static + Sized {
+    type ExampleUserEvent;
     fn optional_features() -> wgpu::Features {
         wgpu::Features::empty()
     }
@@ -80,6 +58,7 @@ pub trait Example: 'static + Sized {
         adapter: &wgpu::Adapter,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        event_loop: &EventLoop<Self::ExampleUserEvent>,
     ) -> Self;
     fn resize(
         &mut self,
@@ -87,6 +66,8 @@ pub trait Example: 'static + Sized {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     );
+
+    fn handle_user_event(&mut self, event: Self::ExampleUserEvent);
     fn update(&mut self, event: WindowEvent);
     fn render(
         &mut self,
@@ -99,9 +80,9 @@ pub trait Example: 'static + Sized {
     );
 }
 
-struct Setup {
+struct Setup<UserEventType: 'static> {
     window: winit::window::Window,
-    event_loop: EventLoop<AppEvent>,
+    event_loop: EventLoop<UserEventType>,
     instance: wgpu::Instance,
     size: winit::dpi::PhysicalSize<u32>,
     surface: wgpu::Surface,
@@ -136,8 +117,6 @@ fn get_descendent_with_name(node: &web_sys::Node, name: &str) -> Option<web_sys:
 
 #[cfg(target_arch = "wasm32")]
 pub fn init_web_log() {
-    use console_log;
-    use console_error_panic_hook;
     console_error_panic_hook::set_once();
     let query_string = web_sys::window().unwrap().location().search().unwrap();
     let level: log::Level = parse_url_query_string(&query_string, "RUST_LOG")
@@ -152,13 +131,13 @@ async fn setup<E: Example>(
     #[cfg(target_arch = "wasm32")]
     container_name : String
 
-) -> Setup {
+) -> Setup<E::ExampleUserEvent> {
     #[cfg(not(target_arch = "wasm32"))]
     {
         env_logger::init();
     };
 
-    let event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
+    let event_loop = EventLoopBuilder::<E::ExampleUserEvent>::with_user_event().build();
     let mut builder = winit::window::WindowBuilder::new();
     builder = builder.with_title(title)
         .with_inner_size(winit::dpi::LogicalSize::new(logical_size.0, logical_size.1))
@@ -181,8 +160,6 @@ async fn setup<E: Example>(
             .and_then(|doc| doc.body())
             .and_then(|body| {
                 // Find the div with the id container_name and append the canvas to it
-                let nodes = body.child_nodes();
-
                 if let Some(x) = get_descendent_with_name(&body, container_name.as_str()) {
                     return Some(x);
                 }
@@ -202,7 +179,6 @@ async fn setup<E: Example>(
     let mut offscreen_canvas_setup: Option<OffscreenCanvasSetup> = None;
     #[cfg(target_arch = "wasm32")]
     {
-        use wasm_bindgen::JsCast;
         use winit::platform::web::WindowExtWebSys;
 
         let query_string = web_sys::window().unwrap().location().search().unwrap();
@@ -240,7 +216,7 @@ async fn setup<E: Example>(
         backends,
         dx12_shader_compiler,
     });
-    let (mut size, surface) = unsafe {
+    let (size, surface) = unsafe {
         let size = window.inner_size();
 
         #[cfg(any(not(target_arch = "wasm32"), target_os = "emscripten"))]
@@ -343,7 +319,7 @@ fn start<E: Example>(
         adapter,
         device,
         queue,
-    }: Setup,
+    }: Setup<E::ExampleUserEvent>,
     #[cfg(target_arch = "wasm32")] Setup {
         window,
         event_loop,
@@ -354,7 +330,7 @@ fn start<E: Example>(
         device,
         queue,
         offscreen_canvas_setup,
-    }: Setup,
+    }: Setup<E::ExampleUserEvent>,
 ) {
     let spawner = Spawner::new();
     let mut config = surface
@@ -365,10 +341,7 @@ fn start<E: Example>(
     surface.configure(&device, &config);
 
     log::info!("Initializing the example...");
-    let mut example = E::init(&config, &adapter, &device, &queue);
-
-    let proxy: EventLoopProxy<AppEvent> = event_loop.create_proxy();
-    EVENT_LOOP_PROXY.set(Some(proxy));
+    let mut example = E::init(&config, &adapter, &device, &queue, &event_loop);
 
     #[cfg(not(target_arch = "wasm32"))]
     let mut last_frame_inst = Instant::now();
@@ -385,14 +358,7 @@ fn start<E: Example>(
         };
         match event {
             event::Event::UserEvent(event) => {
-                log::info!( "received user event {:?}", event );
-                match event {
-                    AppEvent::SetSize { width, height } => {
-                    },
-
-                    AppEvent::Pause {} => {
-                    }
-                }
+                example.handle_user_event(event);
             }
             event::Event::RedrawEventsCleared => {
                 #[cfg(not(target_arch = "wasm32"))]
@@ -537,7 +503,6 @@ impl Spawner {
 
     #[allow(dead_code)]
     pub fn spawn_local(&self, future: impl Future<Output = ()> + 'static) {
-        use wasm_bindgen_futures;
         wasm_bindgen_futures::spawn_local(future);
     }
 }
@@ -550,8 +515,7 @@ pub fn run<E: Example>(title: &str, logical_size: (u32, u32)) {
 
 #[cfg(target_arch = "wasm32")]
 pub fn run<E: Example>(title: &str, logical_size: (u32, u32), container_name : String ) {
-    use wasm_bindgen::{prelude::*, JsCast};
-    use wasm_bindgen_futures;
+    use wasm_bindgen::prelude::*;
 
     let title = title.to_owned();
     wasm_bindgen_futures::spawn_local(async move {

@@ -5,12 +5,7 @@ use std::env;
 /// This application is built upon a wgpu example, thus the Example struct
 /// 
 /// 
-use winit::event::{self, WindowEvent};
-use chrono::Utc;
-use web_time;  // When not targetting wasm32, this is a wrapper around std::time
-
 mod pipeline;
-use crate::pipeline::Pipeline;
 
 mod framework;
 
@@ -18,13 +13,7 @@ mod simulation;
 
 mod test_runner;
 
-use pipeline::{
-    AgentData,
-    PipelineConfiguration};
-
 use simulation::Simulation;
-use test_runner::OnlineTestRunner;
-use framework::Example;
 
 
 /// run example

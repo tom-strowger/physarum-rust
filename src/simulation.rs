@@ -1,7 +1,6 @@
-use std::env;
 
+// use pipeline;
 use crate::pipeline::{
-    AgentData,
     PipelineConfiguration,
     Pipeline,
 };
@@ -10,7 +9,13 @@ use crate::pipeline::{
 /// This application is built upon a wgpu example, thus the Example struct
 /// 
 /// 
-use winit::event::{self, WindowEvent};
+use winit::{
+    event::{self, WindowEvent}};
+
+use winit::{
+    event_loop::{EventLoop, EventLoopBuilder, EventLoopProxy},
+};
+use web_sys::wasm_bindgen::JsError;
 use chrono::Utc;
 use web_time;  // When not targetting wasm32, this is a wrapper around std::time
 
@@ -30,7 +35,7 @@ pub struct Simulation {
     next_render_time: web_time::Instant,
 }
 
-fn hex_to_f32_4(hex: String) -> [f32; 4] {
+pub fn hex_to_f32_4(hex: String) -> [f32; 4] {
     let hex = hex.trim_start_matches('#');
     let r = u8::from_str_radix(&hex[0..2], 16).unwrap() as f32 / 255.0;
     let g = u8::from_str_radix(&hex[2..4], 16).unwrap() as f32 / 255.0;
@@ -39,10 +44,60 @@ fn hex_to_f32_4(hex: String) -> [f32; 4] {
     [r, g, b, a]
 }
 
-const LOGICAL_WIDTH : u32 = 1280;
-const LOGICAL_HEIGHT : u32 = 800;
+use std::cell::RefCell;
+#[derive(Debug)]
+pub enum AppEvent {
+    Pause {},
+    SetSize { width: u32, height: u32 },
+    SetForegroundColour{
+        rgba: [f32; 4],  // RGBA
+    },
+    SetBackgroundColour{
+        rgba: [f32; 4],  // RGBA
+    },
+    SetSenseAngle{ 
+        sense_angle: f32,
+    },
+    SetSenseOffset{
+        sense_offset: f32,
+    },
+    SetStepSize{
+        step: f32,
+    },
+    SetRotateAngle{
+        rotate_angle: f32,
+    },
+    SetDeposit{
+        deposit: f32
+    },
+    SetDecay{
+        decay: f32
+    }
+}
+
+thread_local! {
+    pub static EVENT_LOOP_PROXY: RefCell<Option<EventLoopProxy<AppEvent>>> = RefCell::new(None);
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn send_event(event: AppEvent) -> Result<(), JsError> {
+    EVENT_LOOP_PROXY.with_borrow(|proxy| {
+        proxy
+            .as_ref()
+            .ok_or_else(|| {
+                JsError::new(
+                    "No EventLoopProxy. Did you call wasm_main() before send_custom_event()?",
+                )
+            })?
+            .send_event(event)?;
+
+        Ok(())
+    })
+}
 
 impl framework::Example for Simulation {
+    type ExampleUserEvent = AppEvent;
+
     fn required_limits() -> wgpu::Limits {
         wgpu::Limits::downlevel_defaults()
     }
@@ -60,7 +115,11 @@ impl framework::Example for Simulation {
         _adapter: &wgpu::Adapter,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        event_loop: &EventLoop<Self::ExampleUserEvent>,
     ) -> Self {
+        
+        let proxy: EventLoopProxy<AppEvent> = event_loop.create_proxy();
+        EVENT_LOOP_PROXY.set(Some(proxy));
 
         let mut pipeline = Pipeline::init(config, device, queue, 
             PipelineConfiguration::default(device, config, queue));
@@ -150,6 +209,41 @@ impl framework::Example for Simulation {
             dump: false,
 
             next_render_time: web_time::Instant::now(),
+        }
+    }
+
+    fn handle_user_event(&mut self, event: Self::ExampleUserEvent) {
+        log::info!( "received user event {:?}", event );
+        match event {
+            AppEvent::SetSize { width, height } 
+                => {
+            },
+            AppEvent::Pause {} => {
+            },
+            AppEvent::SetForegroundColour { rgba } => {
+                self.pipeline.set_foreground_colour( rgba );
+            },
+            AppEvent::SetBackgroundColour { rgba } => {
+                self.pipeline.set_background_colour( rgba );
+            },
+            AppEvent::SetSenseAngle { sense_angle } => {
+                self.pipeline.set_sense_angle( sense_angle );
+            },
+            AppEvent::SetSenseOffset { sense_offset } => {
+                self.pipeline.set_sense_offset( sense_offset );
+            },
+            AppEvent::SetStepSize { step } => {
+                self.pipeline.set_step_size( step );
+            },
+            AppEvent::SetRotateAngle { rotate_angle } => {
+                self.pipeline.set_rotate_angle( rotate_angle );
+            },
+            AppEvent::SetDeposit { deposit } => {
+                self.pipeline.set_deposit( deposit );
+            },
+            AppEvent::SetDecay { decay } => {
+                self.pipeline.set_decay( decay );
+            },
         }
     }
 
@@ -249,7 +343,7 @@ impl framework::Example for Simulation {
 
         if time_to_render
         {
-            if let(Some(frame_rate_limit)) = FRAME_RATE_LIMIT {
+            if let Some(frame_rate_limit) = FRAME_RATE_LIMIT {
                 self.next_render_time += std::time::Duration::from_millis((1000.0 / frame_rate_limit as f32) as u64);
             }
 

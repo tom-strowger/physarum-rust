@@ -1,12 +1,3 @@
-use std::env;
-
-///
-/// This application is built upon a wgpu example, thus the Example struct
-/// 
-/// 
-use winit::event::{self, WindowEvent};
-use chrono::Utc;
-use web_time;  // When not targetting wasm32, this is a wrapper around std::time
 
 use crate::pipeline::Pipeline;
 
@@ -87,8 +78,7 @@ mod online_tests {
 
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
-    use serde::de;
-    use wgpu::{util::DeviceExt};
+    use wgpu::util::DeviceExt;
 
     #[derive(Copy, Clone, Debug)]
     struct Point
@@ -137,7 +127,7 @@ mod online_tests {
             }
         }
 
-        (img_data)
+        img_data
     }
 
 
@@ -231,7 +221,7 @@ mod online_tests {
         };
         let texture = device.create_texture_with_data(queue, &texture_descriptor, &image_data );
 
-        (texture)
+        texture
     }
 
     fn test_agents_deposit(

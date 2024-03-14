@@ -3,7 +3,73 @@
     <meta content="text/html;charset=utf-8" http-equiv="Content-Type"/>
   </head>
   <body>
-    <div id="physarum-canvas"/>
+
+  <table>
+    <tr>
+      <td>
+        <!-- When the physarum.js runs a canvas is added within this div-->
+        <div id="physarum-canvas" width="600px" height="600px"></div>
+      </td>
+      <td>
+        Parameters:
+
+        <div id="simulation-controls""/>
+          
+        <!--
+          <script>
+              window.addEventListener('pageshow', (event) => {
+
+                const urlParams = new URLSearchParams(window.location.search);
+                if( urlParams.has('rotate_angle') ){
+                  rotate_angle_x.value = Math.pow( urlParams.get('rotate_angle') / 360.0, 1.0 / 3.0 );
+                }
+                if( urlParams.has('sense_angle') ){
+                  sense_angle_x.value = Math.pow( urlParams.get('sense_angle') / 360.0, 1.0 / 3.0 );
+                }
+                if( urlParams.has('sense_offset') ){
+                  sense_offset_x.value = urlParams.get('sense_offset');
+                }
+                if( urlParams.has('step_size') ){
+                  step_size_x.value = urlParams.get('step_size');
+                }
+                if( urlParams.has('num_agents') ){
+                  num_agents_x.value = Math.log2(urlParams.get('num_agents'));
+                }
+                if( urlParams.has('decay') ){
+                  decay_x.value = Math.sqrt(urlParams.get('decay'));
+                }
+                if( urlParams.has('deposit') ){
+                  deposit_x.value = urlParams.get('deposit');
+                }
+
+                // The sliders don't update when the page is loaded after navigating "back" to it,
+                // so manually do it here.
+                updateRotateAngle();
+                updateSenseAngle();
+                updateSenseOffset();
+                updateStepSize();
+                updateNumAgents();
+                updateDecay();
+                updateDeposit();
+              });
+          </script> -->
+        </table>
+
+          <!-- <script>
+            function save_to_png()
+            {
+                var canvas = document.getElementById('physarum-canvas');
+                var image = canvas.children[0].toDataURL("image/png").replace("image/png", "image/octet-stream");
+                var link = document.createElement('a');
+                link.download = "physarum.png";
+                link.href = image;
+                link.click();
+            }
+          </script>
+          <button onclick="save_to_png()">Save to PNG</button> -->
+        </td>
+      </tr>
+    </table>
     <!--  -->
   </body>
 </html>

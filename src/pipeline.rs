@@ -119,7 +119,7 @@ impl PipelineSharedBuffers {
         };
         let texture = device.create_texture_with_data(queue, &texture_descriptor, &data );
 
-        (texture)
+        texture
     }
 
     pub fn get_chemo_texture_width_height(
@@ -877,8 +877,8 @@ impl Pipeline {
     
     #[cfg(target_arch = "wasm32")]
     pub fn dump_debug_textures(&self, 
-        device: &wgpu::Device,
-        queue: &wgpu::Queue)
+        _: &wgpu::Device,
+        _: &wgpu::Queue)
     {
         log::warn!("dump_debug_textures not implemented for wasm32")
     }
@@ -1367,8 +1367,8 @@ impl ExecutableStage for DepositPipelineStage
 {
     fn execute(&self, 
         command_encoder: &mut wgpu::CommandEncoder, 
-        shared_buffers: &PipelineSharedBuffers,
-        frame_num: usize ) 
+        _shared_buffers: &PipelineSharedBuffers,
+        _frame_num: usize ) 
     {
         let work_group_size = 8;
 
@@ -1533,8 +1533,8 @@ impl ExecutableStage for DiffusePipelineStage
 {
     fn execute(&self, 
         command_encoder: &mut wgpu::CommandEncoder, 
-        shared_buffers: &PipelineSharedBuffers,
-        frame_num: usize ) 
+        _shared_buffers: &PipelineSharedBuffers,
+        _frame_num: usize ) 
     {
 
         let work_group_size = 8;
