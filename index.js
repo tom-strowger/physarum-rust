@@ -11,18 +11,29 @@ import('./pkg')
         height: 600
       }
 
-      wasm.add_simulation_to("physarum-canvas", options);
+      let initial_values = {
+        rotate_angle: 22.0,
+        sense_angle: 22.0,
+        sense_offset: 5.0,
+        step_size: 3.0,
+        decay: 0.10,
+        deposit: 1.0,
+      }
 
-      // Todo: init the loop synchronously when the module imports so this doesn't have to be done with a timer
-      document.timer = setInterval( function() { wasm.set_foreground_colour( "4599AA" ); }, 1000 );
-      document.timer = setInterval( function() { wasm.set_background_colour( "EEEE89" ); }, 1000 );
+      wasm.add_simulation_to("physarum-div", options);
 
-      add_controls();
+      let div = document.getElementById("physarum-div");
+      div.setAttribute("style", "min-width: 900px; min-height: 600px;");
+
+      wasm.set_foreground_colour( "4599AA" );
+      wasm.set_background_colour( "EEEE89" );
+
+      add_controls( initial_values );
 
     }
 );
 
-function add_controls() {
+function add_controls( initial_values ) {
   
   let container = document.getElementById('simulation-controls');
   if (!container) throw new Error('Unable to find #container in dom');
@@ -57,12 +68,23 @@ function add_controls() {
     function(x){ return x / 5; },
     function(x){ mod.set_deposit(x) } );
 
-  ra.value = "0.30";
-  sa.value = "0.35"
-  so.value = "0.2";
-  ss.value = "0.2";
-  dr.value = "0.25";
-  da.value = "0.12";
+  ra.input.value = ra.norm( initial_values.rotate_angle );
+  ra.input.dispatchEvent(new Event('input'));
+
+  sa.input.value = sa.norm( initial_values.sense_angle );
+  sa.input.dispatchEvent(new Event('input'));
+
+  so.input.value = so.norm( initial_values.sense_offset );
+  so.input.dispatchEvent(new Event('input'));
+
+  ss.input.value = ss.norm( initial_values.step_size );
+  ss.input.dispatchEvent(new Event('input'));
+
+  dr.input.value = dr.norm( initial_values.decay );
+  dr.input.dispatchEvent(new Event('input'));
+
+  da.input.value = da.norm( initial_values.deposit );
+  da.input.dispatchEvent(new Event('input'));
 
   container.appendChild(table);
 
@@ -96,5 +118,10 @@ function add_control_to_table( name, table, denormalisation, normalisation,
   row.appendChild(output);
   table.appendChild(row);
 
-  return input;
+  return {
+    'input': input,
+    'output': output,
+    'norm': normalisation,
+    'denorm': denormalisation,
+  }
 }

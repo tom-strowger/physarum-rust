@@ -77,22 +77,25 @@ pub enum AppEvent {
 
 thread_local! {
     pub static EVENT_LOOP_PROXY: RefCell<Option<EventLoopProxy<AppEvent>>> = RefCell::new(None);
+    pub static EVENT_QUEUE: RefCell<Vec<AppEvent>> = RefCell::new(Vec::new());
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn send_event(event: AppEvent) -> Result<(), JsError> {
-    EVENT_LOOP_PROXY.with_borrow(|proxy| {
-        proxy
-            .as_ref()
-            .ok_or_else(|| {
-                JsError::new(
-                    "No EventLoopProxy. Did you call wasm_main() before send_custom_event()?",
-                )
-            })?
-            .send_event(event)?;
+pub fn send_event(event: AppEvent) -> Result<(), JsError>{
+    EVENT_LOOP_PROXY.with_borrow_mut(|proxy| {
+        match proxy.as_mut() {
+            Some(proxy) => {
+                proxy.send_event(event).unwrap();
+            }
+            None => {
+                EVENT_QUEUE.with_borrow_mut(|queue| {
+                    queue.push(event);
+                });
+            }
+        }
+    });
 
-        Ok(())
-    })
+    Ok(())
 }
 
 impl framework::Example for Simulation {
@@ -119,6 +122,14 @@ impl framework::Example for Simulation {
     ) -> Self {
         
         let proxy: EventLoopProxy<AppEvent> = event_loop.create_proxy();
+
+        // Dispatch any events that were sent before the event loop was created
+        EVENT_QUEUE.with_borrow_mut(|queue| {
+            while !queue.is_empty() {
+                proxy.send_event(queue.remove(0)).unwrap();
+            }
+        });
+
         EVENT_LOOP_PROXY.set(Some(proxy));
 
         let mut pipeline = Pipeline::init(config, device, queue, 
