@@ -7,7 +7,7 @@ import('./pkg')
       mod = wasm;
 
       let options = {
-        width: 900,
+        width: 600,
         height: 600
       }
 
@@ -23,10 +23,10 @@ import('./pkg')
       wasm.add_simulation_to("physarum-div", options);
 
       let div = document.getElementById("physarum-div");
-      div.setAttribute("style", "min-width: 900px; min-height: 600px;");
+      div.setAttribute("style", "min-width: " + options.width + "px; min-height: "  + options.height + "px;");
 
-      wasm.set_foreground_colour( "4599AA" );
-      wasm.set_background_colour( "EEEE89" );
+      wasm.set_foreground_colour( "74A19A" );
+      wasm.set_background_colour( "EBD999" );
 
       add_controls( initial_values );
 
@@ -97,12 +97,14 @@ function add_control_to_table( name, table, denormalisation, normalisation,
   let label = document.createElement('td');
   label.innerHTML = name;
 
+  let input_td = document.createElement('td');
   let input = document.createElement('input');
   input.type = "range";
   input.min = "0";
   input.max = "1.0";
   input.step = "0.001";
-  input.class="slider";
+  input.className = "slider";
+  input_td.appendChild(input);
 
   let output = document.createElement('td');
   output.innerHTML = input.value;
@@ -114,7 +116,7 @@ function add_control_to_table( name, table, denormalisation, normalisation,
   }
 
   row.appendChild(label);
-  row.appendChild(input);
+  row.appendChild(input_td);
   row.appendChild(output);
   table.appendChild(row);
 
