@@ -1,4 +1,6 @@
 
+use winit::event_loop;
+
 use crate::pipeline::Pipeline;
 
 use crate::framework;
@@ -11,7 +13,18 @@ pub struct OnlineTestRunner {
     pipeline: Pipeline
 }
 
+pub enum MockUserEvent {
+
+}
+
 impl framework::Example for OnlineTestRunner {
+
+    type ExampleUserEvent = MockUserEvent;
+
+    fn handle_user_event(&mut self, event: Self::ExampleUserEvent) {
+        //empty
+    }
+
     fn required_limits() -> wgpu::Limits {
         wgpu::Limits::downlevel_defaults()
     }
@@ -29,6 +42,7 @@ impl framework::Example for OnlineTestRunner {
         _adapter: &wgpu::Adapter,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        event_loop: &event_loop::EventLoop<MockUserEvent>,
     ) -> Self {
 
         // returns Example struct and No encoder commands

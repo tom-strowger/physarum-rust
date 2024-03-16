@@ -11,9 +11,10 @@ mod framework;
 
 mod simulation;
 
-mod test_runner;
-
 use simulation::Simulation;
+
+#[cfg(not(target_arch = "wasm32"))]
+mod test_runner;
 
 
 /// run example
@@ -57,7 +58,7 @@ fn main() {
     if online_test_mode {
         // @todo Implement a custom test harness for these tests (using just the main thread)
 #[cfg(not(target_arch = "wasm32"))]
-        framework::run::<OnlineTestRunner>("Physarum", (logical_width, logical_height));
+        framework::run::<test_runner::OnlineTestRunner>("Physarum", (logical_width, logical_height));
     } else {
         framework::run::<Simulation>("Physarum", (logical_width, logical_height));
     }
