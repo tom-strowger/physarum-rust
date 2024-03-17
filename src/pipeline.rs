@@ -33,6 +33,9 @@ impl AgentData
 unsafe impl Zeroable for AgentData {}
 unsafe impl Pod for AgentData {}
 
+// This is the number of agents space is allocated for. During runtime only the firt num_agents are updated.
+static MAX_NUM_AGENTS: usize = 1 << 21;
+
 // this is Pod
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct SimulationParameters
@@ -52,7 +55,7 @@ pub struct SimulationParameters
     width: u32,
     height: u32,
     control_alpha: f32,
-    num_agents: u32,
+    num_agents: u32,  // The number to simulate, changeable during runtime, up to MAX_NUM_AGENTS
     chemo_squared_detractor: f32
 }
 
@@ -419,17 +422,17 @@ impl PipelineConfiguration {
         {
             background_colour,
             foreground_colour,
-            sense_angle: 15.0,
-            sense_offset: 3.0,
-            step: 2.0,
-            rotate_angle: 18.0,
+            sense_angle: 22.0,
+            sense_offset: 5.0,
+            step: 3.0,
+            rotate_angle: 22.0,
             max_chemo: 5.0,
             deposit_chemo: 1.0,
-            decay_chemo: 0.12,
+            decay_chemo: 0.10,
             width: config.width,
             height: config.height,
             control_alpha: 0.0,
-            num_agents: 1 << 21,
+            num_agents: 1 << 20,
             chemo_squared_detractor: 0.0,
         };
 
@@ -501,7 +504,7 @@ impl PipelineConfiguration {
                 heading: 0.0,
                 padding: 0.0,
             };
-            sim_param_data.num_agents as usize];
+            MAX_NUM_AGENTS as usize];
 
         let mut unif = || rand::random::<f32>(); // Generate a num (0, 1)
         
@@ -889,7 +892,16 @@ impl Pipeline {
         queue: &wgpu::Queue,
         texture: &wgpu::Texture) -> Vec<u8>
     {
+        let total_size = 4 * self.width * self.height;
+        let max_buffer_size: u32 = 268435456;
+
+        let num_chunks = ( total_size - 1 ) / max_buffer_size + 1;
+        
+        
+
         let buffer_data = vec![0.0f32; (4 * self.width * self.height) as usize];
+
+
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(&"buffer data"),
             contents: bytemuck::cast_slice(&buffer_data),
@@ -897,6 +909,13 @@ impl Pipeline {
                 | wgpu::BufferUsages::COPY_DST,
         });
 
+
+        let byes_per_row = 4 * self.width;
+        
+        if (( byes_per_row / wgpu::COPY_BYTES_PER_ROW_ALIGNMENT ) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT != byes_per_row )
+        {
+            panic!("Image size must be a multiple of 64px to save");
+        }
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         encoder.copy_texture_to_buffer(
@@ -906,7 +925,7 @@ impl Pipeline {
                 layout: wgpu::ImageDataLayout {
                     offset: 0,
                     bytes_per_row: Some(4 * self.width),
-                    rows_per_image: Some(self.height),
+                    rows_per_image: None,
                 },
             },
             wgpu::Extent3d {
@@ -920,9 +939,6 @@ impl Pipeline {
         let buffer_slice = buffer.slice(..);
 
         // map the buffer, wait until the callback is called
-        
-        let width = self.width;
-        let height = self.height;
 
         buffer_slice.map_async(wgpu::MapMode::Read,|slice| {
             if let Err(_) = slice {
@@ -1093,7 +1109,7 @@ impl NewDotsPipelineStage
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
-                            min_binding_size: wgpu::BufferSize::new((sim_param_data.num_agents * 16) as _),
+                            min_binding_size: wgpu::BufferSize::new((MAX_NUM_AGENTS * 16) as _),
                         },
                         count: None,
                     }
@@ -1602,7 +1618,7 @@ impl UpdateAgentsPipelineStage
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
-                            min_binding_size: wgpu::BufferSize::new((sim_param_data.num_agents * 16) as _),
+                            min_binding_size: wgpu::BufferSize::new((MAX_NUM_AGENTS * 16) as _),
                         },
                         count: None,
                     },
@@ -1628,7 +1644,7 @@ impl UpdateAgentsPipelineStage
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Storage { read_only: false },
                             has_dynamic_offset: false,
-                            min_binding_size: wgpu::BufferSize::new((sim_param_data.num_agents * 16) as _),
+                            min_binding_size: wgpu::BufferSize::new((MAX_NUM_AGENTS * 16) as _),
                         },
                         count: None,
                     },

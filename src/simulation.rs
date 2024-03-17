@@ -47,7 +47,7 @@ pub fn hex_to_f32_4(hex: String) -> [f32; 4] {
 use std::cell::RefCell;
 #[derive(Debug)]
 pub enum AppEvent {
-    Pause {},
+    SetPause { pause: bool },
     SetSize { width: u32, height: u32 },
     SetForegroundColour{
         rgba: [f32; 4],  // RGBA
@@ -72,6 +72,9 @@ pub enum AppEvent {
     },
     SetDecay{
         decay: f32
+    },
+    SetNumberOfAgents{
+        number_of_agents: u32
     }
 }
 
@@ -226,10 +229,10 @@ impl framework::Example for Simulation {
     fn handle_user_event(&mut self, event: Self::ExampleUserEvent) {
         log::info!( "received user event {:?}", event );
         match event {
-            AppEvent::SetSize { width, height } 
-                => {
+            AppEvent::SetSize { width, height } => {
             },
-            AppEvent::Pause {} => {
+            AppEvent::SetPause { pause } => {
+                self.running = !pause;
             },
             AppEvent::SetForegroundColour { rgba } => {
                 self.pipeline.set_foreground_colour( rgba );
@@ -254,6 +257,9 @@ impl framework::Example for Simulation {
             },
             AppEvent::SetDecay { decay } => {
                 self.pipeline.set_decay( decay );
+            },
+            AppEvent::SetNumberOfAgents { number_of_agents } => {
+                self.pipeline.set_num_agents( number_of_agents );
             },
         }
     }

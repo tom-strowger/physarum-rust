@@ -33,27 +33,10 @@ fn main() {
         }
     }
 
-    let mut logical_width = 1280;
-    let mut logical_height = 800;
-    #[cfg(target_arch = "wasm32")]
-    {
-        let query_string = web_sys::window().unwrap().location().search().unwrap();
+    // A3 = 3508 x 4960
 
-        if let Some(width_param) =
-            framework::parse_url_query_string(&query_string, "width")
-        {
-            let width : u32 = width_param.parse().unwrap();
-            logical_width = width;
-        }
-
-        if let Some(height_param) =
-            framework::parse_url_query_string(&query_string, "height")
-        {
-            let height : u32 = height_param.parse().unwrap();
-            logical_height = height;
-        }
-        
-    }
+    let mut logical_width = 2496;
+    let mut logical_height = 1792;
 
     if online_test_mode {
         // @todo Implement a custom test harness for these tests (using just the main thread)

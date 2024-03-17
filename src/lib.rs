@@ -101,3 +101,19 @@ pub fn set_background_colour(x: String) -> Result<(), JsError> {
         simulation::AppEvent::SetBackgroundColour { rgba: simulation::hex_to_f32_4(x) }
     )
 }
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn set_number_of_agents(x: u32) -> Result<(), JsError> {
+    simulation::send_event( 
+        simulation::AppEvent::SetNumberOfAgents { number_of_agents: x }
+    )
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn set_pause(x: bool) -> Result<(), JsError> {
+    simulation::send_event( 
+        simulation::AppEvent::SetPause { pause: x }
+    )
+}
