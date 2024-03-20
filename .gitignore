@@ -1,9 +1,6 @@
 #Mac files
 *.DS_Store
 
-#Rust files
-cargo.lock
-
 # Build output
 target/
 
