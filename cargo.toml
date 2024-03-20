@@ -15,7 +15,7 @@ path = "src/main.rs"
 [dependencies]
 wgpu = "0.17.2"
 getrandom = { version = "0.2", features = ["js"] }
-rand = "*"
+rand = { version = "*", features = ["small_rng"] }
 winit = "*"
 log = "*"
 async-executor = "*"

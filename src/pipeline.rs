@@ -1,9 +1,8 @@
-use rand;
+use rand::{self, Rng, SeedableRng};
 use std::{borrow::Cow, mem};
 use wgpu::{util::DeviceExt, Origin3d, ImageCopyTexture};
 use bytemuck::{Pod, Zeroable};
 use serde::{Serialize, Deserialize};
-use std::io::Write;
 
 #[cfg(not(target_arch = "wasm32"))]
 use chrono::Local;
@@ -506,8 +505,9 @@ impl PipelineConfiguration {
             };
             MAX_NUM_AGENTS as usize];
 
-        let mut unif = || rand::random::<f32>(); // Generate a num (0, 1)
-        
+        let mut rng = rand::rngs::SmallRng::from_entropy();
+        let mut unif = || rng.gen::<f32>(); // Generate a num (0, 1)
+
         // check if there is an image to load to the distribution of agents at the start
         let seed_image_path = "seed.png";
         
@@ -521,7 +521,8 @@ impl PipelineConfiguration {
                     [a[0], a[1], a[2], a[3]]
                 }).collect();
 
-            let mut get_position_from_seed = ||{
+            for particle_instance_chunk in initial_particle_data.iter_mut() {
+
                 let mut x = unif();
                 let mut y = unif();
 
@@ -549,13 +550,6 @@ impl PipelineConfiguration {
                         y = unif();
                     }
                 }
-
-                (x,y)
-            };
-
-            for particle_instance_chunk in initial_particle_data.iter_mut() {
-
-                let (x, y) = get_position_from_seed();
 
                 particle_instance_chunk.pos_x = x; // posx
                 particle_instance_chunk.pos_y = y; // posy
