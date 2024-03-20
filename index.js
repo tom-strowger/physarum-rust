@@ -6,9 +6,14 @@ import('./pkg')
     .then(wasm => {
       mod = wasm;
 
+      // Optionally get the width and height from the page parameters
+      let url = new URL(window.location.href);
+      let width = parseInt(url.searchParams.get("width")||"600");
+      let height = parseInt(url.searchParams.get("height")||"600");
+
       let options = {
-        width: 600,
-        height: 600,
+        width: width,
+        height: height,
       }
 
       let initial_values = {
@@ -107,6 +112,21 @@ function add_controls( initial_values ) {
   na.input.value = na.norm( initial_values.number_of_agents );
   na.input.dispatchEvent(new Event('input'));
 
+
+  let url = new URL(window.location.href);
+  let extra_controls = (url.searchParams.get("extra_controls")||"0") == "1";
+
+  if( extra_controls )
+  {
+    let bc = add_colour_control_to_table("Background colour", table, 
+      function(x){ mod.set_background_colour(x) } );
+    bc.input.value = "#EBD999";
+  
+    let fc = add_colour_control_to_table("Foreground colour", table, 
+    function(x){ mod.set_foreground_colour(x) } );
+    fc.input.value = "#74A19A";
+  }
+
   let controls_title_row = document.createElement('tr');
   let control_title = document.createElement('h2');
   control_title.textContent = "Controls";
@@ -189,5 +209,28 @@ function add_control_to_table( name, table, denormalisation, normalisation,
     'output': output,
     'norm': normalisation,
     'denorm': denormalisation,
+  }
+}
+
+function add_colour_control_to_table( name, table, on_change = function(x){}) {
+  let row = document.createElement('tr');
+  let label = document.createElement('td');
+  label.innerHTML = name;
+
+  let input_td = document.createElement('td');
+  let input = document.createElement('input');
+  input.type = "color";
+  input_td.appendChild(input);
+
+  input.oninput = function() {
+    on_change( this.value );
+  }
+
+  row.appendChild(label);
+  row.appendChild(input_td);
+  table.appendChild(row);
+
+  return {
+    'input': input
   }
 }
