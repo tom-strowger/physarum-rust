@@ -20,7 +20,7 @@ struct SimParams {
 @group(0) @binding(0) var<uniform> params : SimParams;
 @group(0) @binding(1) var chemo_in : texture_2d<f32>;
 @group(0) @binding(2) var new_dots : texture_2d<f32>;
-@group(0) @binding(3) var chemo_out: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(3) var chemo_out: texture_storage_2d<rgba16float, write>;
 
 // https://github.com/austinEng/Project6-Vulkan-Flocking/blob/master/data/shaders/computeparticles/particle.comp
 @compute
@@ -38,8 +38,7 @@ fn main(@builtin(global_invocation_id) global_invocation_id: vec3<u32>) {
 
   var chemo = textureLoad(chemo_in, index, 0).rgb;
   chemo += textureLoad(new_dots, index, 0).rgb * vec3<f32>( deposit_amount, deposit_amount, deposit_amount );
-
-  // let chemo = vec4<f32>( 1.0, 1.0, 1.0, 1.0 );
+  chemo = min( chemo, vec3<f32>( 65504.0, 65504.0, 65504.0 ) );
 
   textureStore(chemo_out, index, vec4<f32>(chemo.r, chemo.g, chemo.b, 1.0));
 }

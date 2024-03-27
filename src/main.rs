@@ -34,9 +34,10 @@ fn main() {
     }
 
     // A3 = 3508 x 4960
+    // A4 = 2480 x 3508
 
-    let mut logical_width = 2496;
-    let mut logical_height = 1792;
+    let mut logical_width = 1280;
+    let mut logical_height = 800;
 
     if online_test_mode {
         // @todo Implement a custom test harness for these tests (using just the main thread)

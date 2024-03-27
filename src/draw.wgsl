@@ -38,6 +38,16 @@ fn main_vs(
     return vec4<f32>(pos, 0.0, 1.0);
 }
 
+fn s_curve_activation(x: f32)->f32{
+  if x < 0.0 {
+    return 0.0;
+  }
+  if x > 1.0 {
+    return 1.0;
+  }
+  return x * x * (3.0 - 2.0 * x);
+}
+
 @fragment
 fn main_fs(
   @builtin(position) pos : vec4<f32>
@@ -51,7 +61,8 @@ fn main_fs(
   var chemo_value = textureLoad(chemo_in, index, 0);
 
   // This transform makes it appear less grey/washed out
-  chemo_value = pow( chemo_value, vec4<f32>(2.0, 2.0, 2.0, 1.0) );
+  let v = s_curve_activation( chemo_value.x );
+  chemo_value = vec4<f32>( v, v, v, 1.0);
 
   // Apply the foreground/background colours
   chemo_value = mix(params.background_colour, params.foreground_colour, chemo_value.r);

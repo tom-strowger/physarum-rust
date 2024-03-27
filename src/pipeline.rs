@@ -1,5 +1,6 @@
 use rand::{self, Rng, SeedableRng};
 use std::{borrow::Cow, mem};
+use std::io::Write;
 use wgpu::{util::DeviceExt, Origin3d, ImageCopyTexture};
 use bytemuck::{Pod, Zeroable};
 use serde::{Serialize, Deserialize};
@@ -195,18 +196,18 @@ impl PipelineSharedBuffers {
         (buffer)
     }
 
-    fn load_and_scale_image_rgba8(
+    fn load_and_scale_image_rgba16f(
         image_path: &String,
         height: u32,
-        width: u32 ) -> Vec<u8>
+        width: u32 ) -> Vec<u16>
     {
-        let img = image::open(image_path).unwrap().to_rgba8();
+        let img = image::open(image_path).unwrap().to_rgba16();
         let img_dimensions = img.dimensions();
         let img_data = img.into_raw();
 
         // scale the texture data to fit the texture
         let mut scaled_img_data = Vec::new();
-        scaled_img_data.reserve((width * height * 4) as usize);
+        scaled_img_data.reserve((width * height) as usize);
         for y in 0..height {
             for x in 0..width {
                 let scaled_x = (x as f32 / width as f32 * img_dimensions.0 as f32) as u32;
@@ -514,8 +515,8 @@ impl PipelineConfiguration {
         // If there is a seed image, then use it to determine the distribution of agents at the beginning.
         if std::path::Path::new(seed_image_path).exists() {
             // scale the texture data to fit the texture
-            let scaled_img_data = PipelineSharedBuffers::load_and_scale_image_rgba8( &seed_image_path.to_string(), config.height, config.width);
-            let scaled_pixel_data : Vec<[u8;4]> = scaled_img_data
+            let scaled_img_data = PipelineSharedBuffers::load_and_scale_image_rgba16f( &seed_image_path.to_string(), config.height, config.width);
+            let scaled_pixel_data : Vec<[u16;4]> = scaled_img_data
                 .chunks(4)
                 .map(|a| {
                     [a[0], a[1], a[2], a[3]]
@@ -534,11 +535,12 @@ impl PipelineConfiguration {
                     let im_y = (y * (config.height as f32)) as u32;
                     let pixel_index = (im_x + im_y * config.width) as usize;
                     let pixel_data = scaled_pixel_data[pixel_index];
+                    let max_channel_value = std::u16::MAX as f32;
                     let im_intensity = 
-                        (pixel_data[0] as f32 / 255.0 + 
-                         pixel_data[1] as f32 / 255.0 + 
-                         pixel_data[2] as f32 / 255.0) 
-                        *  pixel_data[3] as f32 / 255.0 // Apply alpha
+                        (pixel_data[0] as f32 / max_channel_value + 
+                         pixel_data[1] as f32 / max_channel_value + 
+                         pixel_data[2] as f32 / max_channel_value ) 
+                        *  pixel_data[3] as f32 / max_channel_value // Apply alpha
                         / 3.0;  // Normalise 
 
                     if unif() < im_intensity {
@@ -601,14 +603,14 @@ impl PipelineConfiguration {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2, 
-            format: wgpu::TextureFormat::Rgba8Unorm,
+            format: wgpu::TextureFormat::Rgba16Float,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | 
                 wgpu::TextureUsages::RENDER_ATTACHMENT | 
                 wgpu::TextureUsages::STORAGE_BINDING |
                 wgpu::TextureUsages::COPY_SRC |
                 wgpu::TextureUsages::COPY_DST,
             label: None,
-            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
+            view_formats: &[wgpu::TextureFormat::Rgba16Float],
         };
 
         let mut chemo_textures = Vec::new();
@@ -622,8 +624,9 @@ impl PipelineConfiguration {
         
         if std::path::Path::new(control_image_path).exists() {
             // scale the texture data to fit the texture
-            let scaled_img_data = PipelineSharedBuffers::load_and_scale_image_rgba8( &control_image_path.to_string(), config.height, config.width);
-            control_texture = device.create_texture_with_data(queue, &chemo_texture_descriptor, &scaled_img_data );
+            let scaled_img_data = PipelineSharedBuffers::load_and_scale_image_rgba16f( &control_image_path.to_string(), config.height, config.width);
+            let as_u8_array = unsafe { std::slice::from_raw_parts(scaled_img_data.as_ptr() as *const u8, scaled_img_data.len() * 4) };
+            control_texture = device.create_texture_with_data(queue, &chemo_texture_descriptor, as_u8_array );
         }
         else {
             // If there isn't an image on disk, create an empty control texture
@@ -1296,7 +1299,7 @@ impl DepositPipelineStage
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::StorageTexture {
                             access: wgpu::StorageTextureAccess::WriteOnly,
-                            format: wgpu::TextureFormat::Rgba8Unorm,
+                            format: wgpu::TextureFormat::Rgba16Float,
                             view_dimension: wgpu::TextureViewDimension::D2,
                         },
                         count: None,
@@ -1459,7 +1462,7 @@ impl DiffusePipelineStage
                         visibility: wgpu::ShaderStages::COMPUTE,
                         ty: wgpu::BindingType::StorageTexture {
                             access: wgpu::StorageTextureAccess::WriteOnly,
-                            format: wgpu::TextureFormat::Rgba8Unorm,
+                            format: wgpu::TextureFormat::Rgba16Float,
                             view_dimension: wgpu::TextureViewDimension::D2,
                         },
                         count: None,

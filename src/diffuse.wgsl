@@ -19,7 +19,7 @@ struct SimParams {
 
 @group(0) @binding(0) var<uniform> params : SimParams;
 @group(0) @binding(1) var chemo_in : texture_2d<f32>;
-@group(0) @binding(2) var chemo_out: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(2) var chemo_out: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(3) var texture_sampler: sampler;
 
 
