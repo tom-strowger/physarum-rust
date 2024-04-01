@@ -28,6 +28,7 @@ pub struct Simulation {
     pipeline: Pipeline,
 
     running: bool,
+    single_step: bool,
     save: bool,
     dump: bool,
 
@@ -219,6 +220,7 @@ impl framework::Example for Simulation {
         Simulation {
             pipeline: pipeline,
             running: running,
+            single_step: false,
             save: false,
             dump: false,
 
@@ -285,13 +287,25 @@ impl framework::Example for Simulation {
             WindowEvent::KeyboardInput {
                 input:
                     event::KeyboardInput {
+                        virtual_keycode: Some(event::VirtualKeyCode::I),
+                        state: event::ElementState::Pressed,
+                        ..
+                    },
+                ..
+            } => {
+                // Do a single step
+                self.single_step = true;
+            },
+            WindowEvent::KeyboardInput {
+                input:
+                    event::KeyboardInput {
                         virtual_keycode: Some(event::VirtualKeyCode::S),
                         state: event::ElementState::Pressed,
                         ..
                     },
                 ..
             } => {
-                // Toggle pause
+                // Save an image
                 self.save = true;
             },
             WindowEvent::KeyboardInput {
@@ -303,7 +317,7 @@ impl framework::Example for Simulation {
                     },
                 ..
             } => {
-                // Toggle pause
+                // Dump debug textures
                 self.dump = true;
             },
             WindowEvent::KeyboardInput {
@@ -364,8 +378,9 @@ impl framework::Example for Simulation {
                 self.next_render_time += std::time::Duration::from_millis((1000.0 / frame_rate_limit as f32) as u64);
             }
 
-            if self.running
+            if self.running || self.single_step
             {
+                self.single_step = false;
                 self.pipeline.compute_step( device, queue);
                     
             }

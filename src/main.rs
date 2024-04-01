@@ -16,9 +16,12 @@ use simulation::Simulation;
 #[cfg(not(target_arch = "wasm32"))]
 mod test_runner;
 
+use env_logger;
 
 /// run example
 fn main() {
+    env_logger::init();
+
     // parse command line arguments
     let args: Vec<String> = env::args().collect();
 

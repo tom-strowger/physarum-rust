@@ -1337,6 +1337,7 @@ dependencies = [
  "console_log",
  "env_logger",
  "getrandom",
+ "half",
  "image",
  "js-sys",
  "log",

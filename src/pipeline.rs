@@ -100,7 +100,8 @@ impl PipelineSharedBuffers {
         queue: &wgpu::Queue,
         width: u32,
         height: u32,
-        data: &[u8]
+        data: &[u8],
+        texture_format: wgpu::TextureFormat
     ) -> wgpu::Texture
     {
         let texture_descriptor = wgpu::TextureDescriptor {
@@ -112,13 +113,13 @@ impl PipelineSharedBuffers {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2, 
-            format: wgpu::TextureFormat::Rgba8Unorm,
+            format: texture_format,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | 
                 wgpu::TextureUsages::RENDER_ATTACHMENT | 
                 wgpu::TextureUsages::STORAGE_BINDING |
                 wgpu::TextureUsages::COPY_SRC,
             label: None,
-            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
+            view_formats: &[texture_format],
         };
         let texture = device.create_texture_with_data(queue, &texture_descriptor, &data );
 
@@ -155,7 +156,7 @@ impl PipelineSharedBuffers {
     {
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
-        let texture = PipelineSharedBuffers::create_texture_from_data( device, queue, width, height, data );
+        let texture = PipelineSharedBuffers::create_texture_from_data( device, queue, width, height, data, wgpu::TextureFormat::Rgba16Float );
 
         encoder.copy_texture_to_texture(
             ImageCopyTexture{ 
@@ -317,10 +318,24 @@ impl PipelineSharedBuffers {
         queue: &wgpu::Queue,
         texture: &wgpu::Texture ) -> Vec<u8>
     {        
+        let bytes_per_pixel = match texture.format() {
+            wgpu::TextureFormat::Rgba16Float => 8,
+            wgpu::TextureFormat::Rgba8Unorm => 4,
+            wgpu::TextureFormat::Bgra8UnormSrgb => 4,
+            _ => panic!("Unsupported texture format"),
+        };
+
         let size = texture.size();
-        let read_buffer = PipelineSharedBuffers::create_read_buffer( device, ( size.height * size.width * 4 ) as usize );
+        let read_buffer = PipelineSharedBuffers::create_read_buffer( device, ( size.height * size.width * bytes_per_pixel ) as usize );
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+
+        let byes_per_row = bytes_per_pixel * texture.width();
+        
+        if (( byes_per_row / wgpu::COPY_BYTES_PER_ROW_ALIGNMENT ) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT != byes_per_row )
+        {
+            panic!("Image size must be a multiple of 64px to save");
+        }
 
         encoder.copy_texture_to_buffer(
             wgpu::ImageCopyTexture{
@@ -333,7 +348,7 @@ impl PipelineSharedBuffers {
                 buffer: &read_buffer,
                 layout: wgpu::ImageDataLayout{
                     offset: 0,
-                    bytes_per_row: Some( size.width * 4 ),   // RGBA
+                    bytes_per_row: Some( byes_per_row ),
                     rows_per_image: Some( size.height )
                 }
             },
@@ -733,6 +748,14 @@ impl Pipeline {
             ((srgb + 0.055) / 1.055).powf(2.4)
         }
     }
+    
+    pub fn get_width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn get_height(&self) -> u32 {
+        self.height
+    }
 
     pub fn get_control_alpha(
         &self ) -> f32 {
@@ -762,11 +785,21 @@ impl Pipeline {
         self.shared_buffers.sim_param_data_dirty = true;
     }
 
+    pub fn get_sense_angle(
+        &mut self ) -> f32 {
+        return self.shared_buffers.sim_param_data.sense_angle;
+    }
+
     pub fn set_sense_angle(
         &mut self,
         sense_angle: f32 ) {
         self.shared_buffers.sim_param_data.sense_angle = sense_angle;
         self.shared_buffers.sim_param_data_dirty = true;
+    }
+
+    pub fn get_sense_offset(
+        &mut self ) -> f32 {
+        return self.shared_buffers.sim_param_data.sense_offset;
     }
 
     pub fn set_sense_offset(
@@ -776,11 +809,21 @@ impl Pipeline {
         self.shared_buffers.sim_param_data_dirty = true;
     }
 
+    pub fn get_step_size(
+        &mut self ) -> f32 {
+        return self.shared_buffers.sim_param_data.step;
+    }
+
     pub fn set_step_size(
         &mut self,
         step: f32 ) {
         self.shared_buffers.sim_param_data.step = step;
         self.shared_buffers.sim_param_data_dirty = true;
+    }
+
+    pub fn get_rotate_angle(
+        &mut self ) -> f32 {
+        return self.shared_buffers.sim_param_data.rotate_angle;
     }
 
     pub fn set_rotate_angle(
@@ -790,6 +833,11 @@ impl Pipeline {
         self.shared_buffers.sim_param_data_dirty = true;
     }
 
+    pub fn get_num_agents(
+        &mut self ) -> u32 {
+        return self.shared_buffers.sim_param_data.num_agents;
+    }
+
     pub fn set_num_agents(
         &mut self,
         num_agents: u32 ) {
@@ -797,11 +845,21 @@ impl Pipeline {
         self.shared_buffers.sim_param_data_dirty = true;
     }
 
+    pub fn get_decay(
+        &mut self ) -> f32 {
+        return self.shared_buffers.sim_param_data.decay_chemo;
+    }
+
     pub fn set_decay(
         &mut self,
         decay: f32 ) {
         self.shared_buffers.sim_param_data.decay_chemo = decay;
         self.shared_buffers.sim_param_data_dirty = true;
+    }
+
+    pub fn get_deposit(
+        &mut self ) -> f32 {
+        return self.shared_buffers.sim_param_data.deposit_chemo;
     }
 
     pub fn set_deposit(
@@ -906,8 +964,13 @@ impl Pipeline {
                 | wgpu::BufferUsages::COPY_DST,
         });
 
+        let bytes_per_pixel = match texture.format() {
+            wgpu::TextureFormat::Rgba16Float => 8,
+            wgpu::TextureFormat::Rgba8Unorm => 4,
+            _ => panic!("Unsupported texture format"),
+        };
 
-        let byes_per_row = 4 * self.width;
+        let byes_per_row = bytes_per_pixel * self.width;
         
         if (( byes_per_row / wgpu::COPY_BYTES_PER_ROW_ALIGNMENT ) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT != byes_per_row )
         {
@@ -961,10 +1024,28 @@ impl Pipeline {
         let width = self.width;
         let height = self.height;
 
-        let data = self.get_texture_data( device, queue, texture );
-        let img = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(width, height, data).unwrap();
-
-        img.save(file_name).unwrap();
+        let data = self.shared_buffers.get_texture_data(device, queue, texture);
+        match texture.format() {
+            wgpu::TextureFormat::Rgba16Float => {
+                // convert to u16
+                let mut data_u16 = Vec::new();
+                for it in data.chunks(2) {
+                    let lo = it[0];
+                    let hi = it[1];
+                    let u16_bits = ((hi as u16) << 8) | (lo as u16);
+                    let f16 = half::f16::from_bits(u16_bits);
+                    let max_f32 = u16::MAX as f32;
+                    data_u16.push(  max_f32.min(f16.to_f32() * max_f32) as u16 );
+                }
+                let img = image::ImageBuffer::<image::Rgba<u16>, _>::from_raw(width, height, data_u16).unwrap();
+                img.save(file_name).unwrap();
+            }
+            wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb => {
+                let img = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(width, height, data).unwrap();
+                img.save(file_name).unwrap();
+            }
+            _ => panic!("Unsupported texture format"),
+        }
     }
 
     pub fn resize(
@@ -1194,8 +1275,6 @@ impl ExecutableStage for NewDotsPipelineStage
             view: &new_dots_texture_view,
             resolve_target: None,
             ops: wgpu::Operations {
-                // Not clearing here in order to test wgpu's zero texture initialization on a surface texture.
-                // Users should avoid loading uninitialized memory since this can cause additional overhead.
                 load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                 store: true,
             },

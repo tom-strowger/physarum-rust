@@ -132,11 +132,7 @@ async fn setup<E: Example>(
     container_name : String
 
 ) -> Setup<E::ExampleUserEvent> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        env_logger::init();
-    };
-
+    
     let event_loop = EventLoopBuilder::<E::ExampleUserEvent>::with_user_event().build();
     let mut builder = winit::window::WindowBuilder::new();
     builder = builder.with_title(title)

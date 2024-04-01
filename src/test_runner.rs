@@ -1,5 +1,6 @@
 
 use winit::event_loop;
+use half;
 
 use crate::pipeline::Pipeline;
 
@@ -114,47 +115,44 @@ mod online_tests {
         data: Vec<u8>
     }
 
-    fn create_image_with_vertical_line(
-        width: u32,
-        height: u32) -> Vec<u8>
+    fn create_image_with_vertical_white_line(
+        size: Size,
+        line_pos_x: u32,
+        texture_format: wgpu::TextureFormat ) -> Image
     {
-        let black_pixel : Vec<u8> = [ 0, 0, 0, 0].to_vec();
-        let white_pixel : Vec<u8> = [ 255, 255, 255, 255].to_vec();
-
-        // scale the texture data to fit the texture
-        let mut img_data = Vec::new();
-        img_data.reserve((width * height * 4) as usize);
-        for y in 0..height {
-            for x in 0..width {
-
-                if y == width / 2 {
-                    for &d in &white_pixel{
-                        img_data.push(d);
-                    }
-                }
-                else {
-                    for &d in &black_pixel{
-                        img_data.push(d);
-                    }
-                }
-
-            }
-        }
-
-        img_data
+        let line_colour = [ 1.0, 1.0, 1.0, 1.0 ];
+        
+        let mut image = create_image(size, [0.0,0.0,0.0,0.0], texture_format);
+        add_vertical_line_to_image( &mut image, line_pos_x, line_colour, texture_format);
+        image
     }
 
 
     fn create_image(
         image_size: Size,
-        colour: [u8; 4],) -> Image
+        colour: [f32; 4],  // RGBA
+        texture_format: wgpu::TextureFormat) -> Image
     {
         let mut img_data = Vec::new();
         img_data.reserve((image_size.width * image_size.height * 4) as usize);
 
         for _ in 0..(image_size.width * image_size.height){
             for i in 0..colour.len(){
-                img_data.push( colour[i] );
+                match texture_format {
+                    wgpu::TextureFormat::Rgba8Unorm => {
+                        img_data.push( (colour[i] * 255.0) as u8 );
+                    },
+                    wgpu::TextureFormat::Rgba16Float => {
+                        // convert f32 to f16
+                        let float_16 = half::f16::from_f32( colour[i] );
+                        let float_16_bits = float_16.to_bits();
+                        img_data.push( ((float_16_bits >> 8) & 0x00ff) as u8 );
+                        img_data.push( (float_16_bits & 0x00ff) as u8 );
+                    },
+                    _ => {
+                        panic!("Unsupported texture format");
+                    }
+                }
             }
         }
         Image {
@@ -163,12 +161,46 @@ mod online_tests {
         }
     }
 
+    fn add_vertical_line_to_image(
+        image: &mut Image,
+        line_pos_x: u32,
+        line_colour: [f32; 4],
+        texture_format: wgpu::TextureFormat )
+    {
+        for y in 0..image.size.height {
+            for x in 0..image.size.width {
+                let image_index = ( x + y * image.size.width ) as usize;
+                if x == line_pos_x {
+                    for (i,c) in line_colour.iter().enumerate() {
+                        match texture_format {
+                            wgpu::TextureFormat::Rgba8Unorm => {
+                                image.data[image_index * 4 + i] = (c * 255.0) as u8;
+                            },
+                            wgpu::TextureFormat::Rgba16Float => {
+                                // convert f32 to f16
+                                let float_16 = half::f16::from_f32( *c );
+                                let float_16_bits = float_16.to_bits();
+                                // little endian
+                                image.data[(image_index * 4 + i) * 2] = (float_16_bits & 0x00ff) as u8;
+                                image.data[(image_index * 4 + i) * 2 + 1] = ((float_16_bits >> 8) & 0x00ff) as u8;
+                            },
+                            _ => {
+                                panic!("Unsupported texture format");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fn add_horitontal_gradient_to_image(
         image: &mut Image,
         gradient_size: Size,
         gradient_pos: Point,
-        left_colour: [u8; 4],
-        right_colour: [u8; 4], )
+        left_colour: [f32; 4],
+        right_colour: [f32; 4], 
+        texture_format: wgpu::TextureFormat )
     {
         for x in 0..gradient_size.width {
 
@@ -187,8 +219,23 @@ mod online_tests {
                     
                     // Copy over the rgba data, performing a linear mix
                     for (i,(l,r)) in zip(left_colour, right_colour).enumerate() {
-                        let pixel_rgb_channel_index = image_index * 4 + i;
-                        image.data[pixel_rgb_channel_index] = ( l as f32 * (1.0-mix) + r as f32 * mix ) as u8;
+                        match texture_format {
+                            wgpu::TextureFormat::Rgba8Unorm => {
+                                let pixel_rgb_channel_index = image_index * 4 + i;
+                                image.data[pixel_rgb_channel_index] = ( l as f32 * (1.0-mix) + r as f32 * mix ) as u8;
+                            },
+                            wgpu::TextureFormat::Rgba16Float => {
+                                // convert f32 to f16
+                                let float_16 = half::f16::from_f32( l as f32 * (1.0-mix) + r as f32 * mix );
+                                let pixel_rgb_channel_index = (image_index * 4 + i) * 2;
+                                let float_16_bits = float_16.to_bits();
+                                image.data[pixel_rgb_channel_index] = ((float_16_bits >> 8) & 0x00ff) as u8;
+                                image.data[pixel_rgb_channel_index+1] = (float_16_bits & 0x00ff) as u8;
+                            },
+                            _ => {
+                                panic!("Unsupported texture format");
+                            }
+                        }
                     }
         
                 }
@@ -200,42 +247,13 @@ mod online_tests {
         image_size: Size,
         gradient_size: Size,
         gradient_pos: Point,
-        left_colour: [u8; 4],
-        right_colour: [u8; 4], ) -> Image
+        left_colour: [f32; 4],
+        right_colour: [f32; 4],
+        texture_format: wgpu::TextureFormat ) -> Image
     {
-        let mut image = create_image(image_size, [0,0,0,0]);
-        add_horitontal_gradient_to_image( &mut image, gradient_size, gradient_pos, left_colour, right_colour);
+        let mut image = create_image(image_size, [0.0,0.0,0.0,0.0], texture_format);
+        add_horitontal_gradient_to_image( &mut image, gradient_size, gradient_pos, left_colour, right_colour, texture_format);
         image
-    }
-
-    fn create_texture_with_vertical_line(
-        device : &wgpu::Device,
-        queue: &wgpu::Queue,
-        width: u32,
-        height: u32) -> wgpu::Texture
-    {
-        let image_data = online_tests::create_image_with_vertical_line( width, height );
-
-        let texture_descriptor = wgpu::TextureDescriptor {
-            size: wgpu::Extent3d {
-                width: width,
-                height: height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2, 
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | 
-                wgpu::TextureUsages::RENDER_ATTACHMENT | 
-                wgpu::TextureUsages::STORAGE_BINDING |
-                wgpu::TextureUsages::COPY_SRC,
-            label: None,
-            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
-        };
-        let texture = device.create_texture_with_data(queue, &texture_descriptor, &image_data );
-
-        texture
     }
 
     fn test_agents_deposit(
@@ -243,7 +261,7 @@ mod online_tests {
         device : &wgpu::Device,
         queue: &wgpu::Queue)
     {
-        println!("----test_all_agents_turn_to_face_ascending_gradient----");
+        println!("----test_agents_deposit----");
 
         // GIVEN
         // A chemo texture which is dark to light from left to right
@@ -252,8 +270,9 @@ mod online_tests {
             Size{ width, height }, 
             Size{ width, height },
             Point { x: 0, y: 0 },
-            [0, 0, 0, 0], 
-            [255, 255, 255, 255]);
+            [0.0, 0.0, 0.0, 0.0], 
+            [1.0, 1.0, 1.0, 1.0],
+        wgpu::TextureFormat::Rgba16Float);
         pipeline.get_shared_buffers().upload_to_chemo_texture(device, queue, width, height, &chemo_image.data);
 
         let half_point_width = 0.5 / ( width as f32 );
@@ -321,8 +340,9 @@ mod online_tests {
             Size{ width, height }, 
             Size{ width, height },
             Point { x: 0, y: 0 },
-            [0, 0, 0, 0], 
-            [255, 255, 255, 255]);
+            [0.0, 0.0, 0.0, 0.0], 
+            [1.0, 1.0, 1.0, 1.0],
+        wgpu::TextureFormat::Rgba16Float);
         pipeline.get_shared_buffers().upload_to_chemo_texture(device, queue, width, height, &chemo_image.data);
 
         // And four agents facing in different directions
@@ -372,8 +392,9 @@ mod online_tests {
             Size{ width, height }, 
             Size{ width: width / 2, height: height / 2 },
             Point { x: 0, y: 0 },
-            [0, 0, 0, 0], 
-            [255, 255, 255, 255]);
+            [0.0, 0.0, 0.0, 0.0], 
+            [1.0, 1.0, 1.0, 1.0],
+        wgpu::TextureFormat::Rgba16Float);
         pipeline.get_shared_buffers().upload_to_chemo_texture(device, queue, width, height, &chemo_image.data);
 
         // And four agents facing to the left
@@ -419,8 +440,9 @@ mod online_tests {
             Size{ width, height }, 
             Size{ width: width / 2, height: height / 2 },
             Point { x: 0, y: height / 2 },
-            [0, 0, 0, 0], 
-            [255, 255, 255, 255]);
+            [0.0, 0.0, 0.0, 0.0], 
+            [1.0, 1.0, 1.0, 1.0],
+        wgpu::TextureFormat::Rgba16Float);
         pipeline.get_shared_buffers().upload_to_chemo_texture(device, queue, width, height, &chemo_image.data);
 
         // And four agents facing to the left
@@ -467,8 +489,9 @@ mod online_tests {
             Size{ width, height }, 
             Size{ width: width / 2, height: height / 2 },
             Point { x: width / 2, y: 0 },
-            [0, 0, 0, 0], 
-            [255, 255, 255, 255]);
+            [0.0, 0.0, 0.0, 0.0], 
+            [1.0, 1.0, 1.0, 1.0],
+        wgpu::TextureFormat::Rgba16Float);
         pipeline.get_shared_buffers().upload_to_chemo_texture(device, queue, width, height, &chemo_image.data);
 
         // And four agents facing to the left
@@ -514,8 +537,9 @@ mod online_tests {
             Size{ width, height }, 
             Size{ width: width / 2, height: height / 2 },
             Point { x: width / 2, y: height / 2 },
-            [0, 0, 0, 0], 
-            [255, 255, 255, 255]);
+            [0.0, 0.0, 0.0, 0.0], 
+            [1.0, 1.0, 1.0, 1.0],
+            wgpu::TextureFormat::Rgba16Float);
         pipeline.get_shared_buffers().upload_to_chemo_texture(device, queue, width, height, &chemo_image.data);
 
         // And four agents facing to the left
