@@ -599,12 +599,12 @@ impl PipelineConfiguration {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            format: wgpu::TextureFormat::Rgba16Float,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | 
                 wgpu::TextureUsages::RENDER_ATTACHMENT | 
                 wgpu::TextureUsages::COPY_SRC,
             label: None,
-            view_formats: &[wgpu::TextureFormat::Bgra8Unorm],
+            view_formats: &[wgpu::TextureFormat::Rgba16Float],
         };
         
         let new_dots_texture = device.create_texture(&new_dots_texture_descriptor);
@@ -772,16 +772,14 @@ impl Pipeline {
     pub fn set_background_colour(
         &mut self,
         colour_srgb: [f32; 4] ) {
-        self.shared_buffers.sim_param_data.background_colour = 
-            colour_srgb.into_iter().map(|x| Pipeline::srgb_to_unorm(x)).collect::<Vec<f32>>().try_into().unwrap();
+        self.shared_buffers.sim_param_data.background_colour = colour_srgb;
         self.shared_buffers.sim_param_data_dirty = true;
     }
 
     pub fn set_foreground_colour(
         &mut self,
         colour_srgb: [f32; 4] ) {
-        self.shared_buffers.sim_param_data.foreground_colour = 
-            colour_srgb.into_iter().map(|x| Pipeline::srgb_to_unorm(x)).collect::<Vec<f32>>().try_into().unwrap();
+        self.shared_buffers.sim_param_data.foreground_colour = colour_srgb;
         self.shared_buffers.sim_param_data_dirty = true;
     }
 

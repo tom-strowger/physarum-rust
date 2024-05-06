@@ -332,7 +332,10 @@ fn start<E: Example>(
     let mut config = surface
         .get_default_config(&adapter, size.width, size.height)
         .expect("Surface isn't supported by the adapter.");
-    let surface_view_format = config.format.add_srgb_suffix();
+
+    // Override the default format with Rgba16Float. Some platforms may not support this format.
+    config.format = wgpu::TextureFormat::Rgba16Float;
+    let surface_view_format = wgpu::TextureFormat::Rgba16Float;
     config.view_formats.push(surface_view_format);
     surface.configure(&device, &config);
 
