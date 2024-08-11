@@ -13,10 +13,10 @@ name = "physarum"
 path = "src/main.rs"
 
 [dependencies]
-wgpu = "0.17.2"
+wgpu = "22.1.0"
 getrandom = { version = "0.2", features = ["js"] }
 rand = { version = "*", features = ["small_rng"] }
-winit = "*"
+winit = "0.29"
 log = "*"
 async-executor = "*"
 env_logger = "*"
@@ -29,6 +29,8 @@ serde-wasm-bindgen = "0.4"
 serde_json = "1.0"
 web-time = "0.2.3"
 half = "*"
+cfg-if = "1"
+fern = "0.6"
 
 [dependencies.web-sys]
 version = "0.3.65"
@@ -37,8 +39,8 @@ features = ["Location", "Window"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.5"
-wasm-bindgen-futures = "*"
-wasm-bindgen = "*"
+wasm-bindgen = "0.2.87"
+wasm-bindgen-futures = "0.4.42"
 console_log = { version = "0.2" }
 js-sys = "*"
 

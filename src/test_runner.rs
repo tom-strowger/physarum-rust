@@ -1,4 +1,6 @@
 
+use image::error;
+use log::logger;
 use winit::event_loop;
 use half;
 
@@ -22,6 +24,10 @@ impl framework::Example for OnlineTestRunner {
 
     type ExampleUserEvent = MockUserEvent;
 
+    fn set_proxy(proxy: event_loop::EventLoopProxy<Self::ExampleUserEvent>) {
+        //empty
+    }
+
     fn handle_user_event(&mut self, event: Self::ExampleUserEvent) {
         //empty
     }
@@ -42,8 +48,7 @@ impl framework::Example for OnlineTestRunner {
         config: &wgpu::SurfaceConfiguration,
         _adapter: &wgpu::Adapter,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        event_loop: &event_loop::EventLoop<MockUserEvent>,
+        queue: &wgpu::Queue
     ) -> Self {
 
         // returns Example struct and No encoder commands
@@ -76,14 +81,14 @@ impl framework::Example for OnlineTestRunner {
     fn render(
         &mut self,
         view: &wgpu::TextureView,
-        texture: &wgpu::Texture,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        _: &framework::Spawner,
-        should_exit: &mut bool
+        queue: &wgpu::Queue
     ) {
         online_tests::test_pipeline( &mut self.pipeline, device, queue  );
-        *should_exit = true;
+
+        // @todo, reimplement this
+        log::error!("Test pipeline is not implemented");
+        // *should_exit = true;
     }
 }
 

@@ -10,7 +10,7 @@ use crate::pipeline::{
 /// 
 /// 
 use winit::{
-    event::{self, WindowEvent}};
+    event::{self, WindowEvent}, keyboard::Key};
 
 use winit::{
     event_loop::{EventLoop, EventLoopBuilder, EventLoopProxy},
@@ -104,6 +104,18 @@ pub fn send_event(event: AppEvent) -> Result<(), JsError>{
 
 impl framework::Example for Simulation {
     type ExampleUserEvent = AppEvent;
+    
+    fn set_proxy(proxy: EventLoopProxy<Self::ExampleUserEvent>) {
+
+        // Dispatch any events that were sent before the proxy was created
+        EVENT_QUEUE.with_borrow_mut(|queue| {
+            while !queue.is_empty() {
+                proxy.send_event(queue.remove(0)).unwrap();
+            }
+        });
+
+        EVENT_LOOP_PROXY.set(Some(proxy));
+    }
 
     fn required_limits() -> wgpu::Limits {
         wgpu::Limits::downlevel_defaults()
@@ -121,20 +133,8 @@ impl framework::Example for Simulation {
         config: &wgpu::SurfaceConfiguration,
         _adapter: &wgpu::Adapter,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        event_loop: &EventLoop<Self::ExampleUserEvent>,
+        queue: &wgpu::Queue
     ) -> Self {
-        
-        let proxy: EventLoopProxy<AppEvent> = event_loop.create_proxy();
-
-        // Dispatch any events that were sent before the event loop was created
-        EVENT_QUEUE.with_borrow_mut(|queue| {
-            while !queue.is_empty() {
-                proxy.send_event(queue.remove(0)).unwrap();
-            }
-        });
-
-        EVENT_LOOP_PROXY.set(Some(proxy));
 
         let mut pipeline = Pipeline::init(config, device, queue, 
             PipelineConfiguration::default(device, config, queue));
@@ -273,9 +273,9 @@ impl framework::Example for Simulation {
         match event
         {
             WindowEvent::KeyboardInput {
-                input:
-                    event::KeyboardInput {
-                        virtual_keycode: Some(event::VirtualKeyCode::Space),
+                event:
+                    event::KeyEvent {
+                        logical_key: Key::Named(winit::keyboard::NamedKey::Space),
                         state: event::ElementState::Pressed,
                         ..
                     },
@@ -284,63 +284,63 @@ impl framework::Example for Simulation {
                 // Toggle pause
                 self.running = !self.running;
             },
-            WindowEvent::KeyboardInput {
-                input:
-                    event::KeyboardInput {
-                        virtual_keycode: Some(event::VirtualKeyCode::I),
-                        state: event::ElementState::Pressed,
-                        ..
-                    },
-                ..
-            } => {
-                // Do a single step
-                self.single_step = true;
-            },
-            WindowEvent::KeyboardInput {
-                input:
-                    event::KeyboardInput {
-                        virtual_keycode: Some(event::VirtualKeyCode::S),
-                        state: event::ElementState::Pressed,
-                        ..
-                    },
-                ..
-            } => {
-                // Save an image
-                self.save = true;
-            },
-            WindowEvent::KeyboardInput {
-                input:
-                    event::KeyboardInput {
-                        virtual_keycode: Some(event::VirtualKeyCode::D),
-                        state: event::ElementState::Pressed,
-                        ..
-                    },
-                ..
-            } => {
-                // Dump debug textures
-                self.dump = true;
-            },
-            WindowEvent::KeyboardInput {
-                input:
-                    event::KeyboardInput {
-                        virtual_keycode: Some(event::VirtualKeyCode::C),
-                        state: event::ElementState::Pressed,
-                        ..
-                    },
-                ..
-            } => {
-                // Adjust the control alpha
-                let alpha = self.pipeline.get_control_alpha();
-                if alpha == 0.0 {
-                    self.pipeline.set_control_alpha( 0.2 );
-                }
-                else if alpha == 0.2 {
-                    self.pipeline.set_control_alpha( 1.0 );
-                }
-                else {
-                    self.pipeline.set_control_alpha( 0.0 );
-                }
-            },
+            // WindowEvent::KeyboardInput {
+            //     input:
+            //         event::KeyboardInput {
+            //             virtual_keycode: Some(event::VirtualKeyCode::I),
+            //             state: event::ElementState::Pressed,
+            //             ..
+            //         },
+            //     ..
+            // } => {
+            //     // Do a single step
+            //     self.single_step = true;
+            // },
+            // WindowEvent::KeyboardInput {
+            //     input:
+            //         event::KeyboardInput {
+            //             virtual_keycode: Some(event::VirtualKeyCode::S),
+            //             state: event::ElementState::Pressed,
+            //             ..
+            //         },
+            //     ..
+            // } => {
+            //     // Save an image
+            //     self.save = true;
+            // },
+            // WindowEvent::KeyboardInput {
+            //     input:
+            //         event::KeyboardInput {
+            //             virtual_keycode: Some(event::VirtualKeyCode::D),
+            //             state: event::ElementState::Pressed,
+            //             ..
+            //         },
+            //     ..
+            // } => {
+            //     // Dump debug textures
+            //     self.dump = true;
+            // },
+            // WindowEvent::KeyboardInput {
+            //     input:
+            //         event::KeyboardInput {
+            //             virtual_keycode: Some(event::VirtualKeyCode::C),
+            //             state: event::ElementState::Pressed,
+            //             ..
+            //         },
+            //     ..
+            // } => {
+            //     // Adjust the control alpha
+            //     let alpha = self.pipeline.get_control_alpha();
+            //     if alpha == 0.0 {
+            //         self.pipeline.set_control_alpha( 0.2 );
+            //     }
+            //     else if alpha == 0.2 {
+            //         self.pipeline.set_control_alpha( 1.0 );
+            //     }
+            //     else {
+            //         self.pipeline.set_control_alpha( 0.0 );
+            //     }
+            // },
             _ => {}
         }
     }
@@ -363,11 +363,8 @@ impl framework::Example for Simulation {
     fn render(
         &mut self,
         view: &wgpu::TextureView,
-        texture: &wgpu::Texture,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        _: &framework::Spawner,
-        _: &mut bool
+        queue: &wgpu::Queue
     ) {
         
         let time_to_render = FRAME_RATE_LIMIT.is_none() || web_time::Instant::now() >= self.next_render_time;

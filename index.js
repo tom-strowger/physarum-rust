@@ -152,7 +152,7 @@ function add_controls( initial_values ) {
   let save_button = document.createElement('button');
   save_button.textContent = "Save";
   save_button.onclick = function() {
-    var canvas = document.getElementById('physarum-div').getElementsByTagName('canvas')[0];
+    var canvas = document.getElementById('physarum-div');
     var dataURL = canvas.toDataURL("image/png", 1.0);
     downloadImage(dataURL, 'physarum.png');
   }

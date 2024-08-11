@@ -118,10 +118,10 @@ impl PipelineSharedBuffers {
                 wgpu::TextureUsages::RENDER_ATTACHMENT | 
                 wgpu::TextureUsages::STORAGE_BINDING |
                 wgpu::TextureUsages::COPY_SRC,
-            label: None,
+            label: Some("create_texture_from_data"),
             view_formats: &[texture_format],
         };
-        let texture = device.create_texture_with_data(queue, &texture_descriptor, &data );
+        let texture = device.create_texture_with_data(queue, &texture_descriptor, wgpu::util::TextureDataOrder::LayerMajor, &data );
 
         texture
     }
@@ -154,7 +154,7 @@ impl PipelineSharedBuffers {
         destination_texture: &wgpu::Texture
     )
     {
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("PipelineSharedBuffers") });
 
         let texture = PipelineSharedBuffers::create_texture_from_data( device, queue, width, height, data, wgpu::TextureFormat::Rgba16Float );
 
@@ -232,7 +232,7 @@ impl PipelineSharedBuffers {
         destination_buffer: &wgpu::Buffer
     )
     {
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("PipelineSharedBuffers") });
 
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some(&"buffer data"),
@@ -287,7 +287,7 @@ impl PipelineSharedBuffers {
         let size = source_buffer.size();
         let read_buffer = PipelineSharedBuffers::create_read_buffer( device, size as usize );
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("PipelineSharedBuffers") });
 
         encoder.copy_buffer_to_buffer(
             source_buffer,
@@ -328,7 +328,7 @@ impl PipelineSharedBuffers {
         let size = texture.size();
         let read_buffer = PipelineSharedBuffers::create_read_buffer( device, ( size.height * size.width * bytes_per_pixel ) as usize );
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("get_texture_data") });
 
         let byes_per_row = bytes_per_pixel * texture.width();
         
@@ -603,7 +603,7 @@ impl PipelineConfiguration {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | 
                 wgpu::TextureUsages::RENDER_ATTACHMENT | 
                 wgpu::TextureUsages::COPY_SRC,
-            label: None,
+            label: Some("new dots texture"),
             view_formats: &[wgpu::TextureFormat::Rgba16Float],
         };
         
@@ -624,7 +624,7 @@ impl PipelineConfiguration {
                 wgpu::TextureUsages::STORAGE_BINDING |
                 wgpu::TextureUsages::COPY_SRC |
                 wgpu::TextureUsages::COPY_DST,
-            label: None,
+            label: Some("chemo texture"),
             view_formats: &[wgpu::TextureFormat::Rgba16Float],
         };
 
@@ -641,7 +641,7 @@ impl PipelineConfiguration {
             // scale the texture data to fit the texture
             let scaled_img_data = PipelineSharedBuffers::load_and_scale_image_rgba16f( &control_image_path.to_string(), config.height, config.width);
             let as_u8_array = unsafe { std::slice::from_raw_parts(scaled_img_data.as_ptr() as *const u8, scaled_img_data.len() * 4) };
-            control_texture = device.create_texture_with_data(queue, &chemo_texture_descriptor, as_u8_array );
+            control_texture = device.create_texture_with_data(queue, &chemo_texture_descriptor, wgpu::util::TextureDataOrder::LayerMajor, as_u8_array );
         }
         else {
             // If there isn't an image on disk, create an empty control texture
@@ -688,7 +688,7 @@ impl Pipeline {
 
         // create a texture sampler
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: None,
+            label: Some("pipeline sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,  // temporaririly clamping while debugging.  Will move back to repeating later
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -975,7 +975,7 @@ impl Pipeline {
             panic!("Image size must be a multiple of 64px to save");
         }
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("get_texture_data") });
         encoder.copy_texture_to_buffer(
             texture.as_image_copy(),
             wgpu::ImageCopyBuffer{
@@ -1061,7 +1061,7 @@ impl Pipeline {
         queue: &wgpu::Queue
     )
     {
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("do_parameter_update") });
 
         if self.shared_buffers.sim_param_data_dirty
         {
@@ -1093,7 +1093,7 @@ impl Pipeline {
         self.do_parameter_update( device, queue);
 
         // get command encoder
-        let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        let mut command_encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("compute_step") });
 
         // execute the pipeline stages
         for s in &self.executable_stages{
@@ -1125,7 +1125,7 @@ impl Pipeline {
 
         // get command encoder
         let mut command_encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("render") });
             
         // render to view
         self.render_stage.as_ref().render( &mut command_encoder, view, &self.shared_buffers, self.frame_num);
@@ -1155,7 +1155,7 @@ impl NewDotsPipelineStage
     ) -> NewDotsPipelineStage
     {
         let new_dots_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: None,
+            label: Some("new dots shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("draw_new_dots.wgsl"))),
         });
     
@@ -1190,7 +1190,7 @@ impl NewDotsPipelineStage
                         count: None,
                     }
                 ],
-                label: None,
+                label: Some("new dots bind group layout"),
             });
 
         // create render pipeline with empty bind group layout        
@@ -1201,12 +1201,13 @@ impl NewDotsPipelineStage
                 push_constant_ranges: &[],
             });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: None,
+        let pipeline: wgpu::RenderPipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("new dots render pipeline"),
             layout: Some(&new_dots_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &new_dots_shader,
                 entry_point: "main_vs",
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: &[
                     wgpu::VertexBufferLayout {
                         array_stride: 4 * 4,
@@ -1223,12 +1224,14 @@ impl NewDotsPipelineStage
             fragment: Some(wgpu::FragmentState {
                 module: &new_dots_shader,
                 entry_point: "main_fs",
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(config.view_formats[0].into())],
             }),
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
+            cache: None,
         });
 
         let mut bind_groups = Vec::<wgpu::BindGroup>::new();
@@ -1246,7 +1249,7 @@ impl NewDotsPipelineStage
                         resource: shared_buffers.agent_buffers[i].as_entire_binding(),
                     },
                 ],
-                label: None,
+                label: Some("new dots bind group"),
             }));
         }
 
@@ -1274,13 +1277,15 @@ impl ExecutableStage for NewDotsPipelineStage
             resolve_target: None,
             ops: wgpu::Operations {
                 load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                store: true,
+                store: wgpu::StoreOp::Store,
             },
         })];
         let new_dots_render_pass_descriptor = wgpu::RenderPassDescriptor {
-            label: None,
+            label: Some("new dots render pass"),
             color_attachments: &color_attachments,
             depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
         };
 
         command_encoder.push_debug_group("render dot for each agent");
@@ -1382,7 +1387,7 @@ impl DepositPipelineStage
                         count: None,
                     },
                 ],
-                label: None,
+                label: Some("deposit bind group layout"),
             });
 
         
@@ -1421,7 +1426,7 @@ impl DepositPipelineStage
                     )
                 },
             ],
-            label: None,
+            label: Some("deposit bind group"),
         });
 
         let deposit_pipeline_layout =
@@ -1432,7 +1437,7 @@ impl DepositPipelineStage
             });
 
         let deposit_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: None,
+            label: Some("deposit shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("deposit.wgsl"))),
         });
             
@@ -1441,6 +1446,8 @@ impl DepositPipelineStage
             layout: Some(&deposit_pipeline_layout),
             module: &deposit_shader,
             entry_point: "main",
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            cache: None,
         });
 
         DepositPipelineStage{
@@ -1466,7 +1473,7 @@ impl ExecutableStage for DepositPipelineStage
         {
             // compute pass
             let mut cpass =
-                command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
+                command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("deposit stage compute pass"), timestamp_writes: None });
             cpass.set_pipeline(&self.pipeline);
             cpass.set_bind_group(0, &self.bind_group, &[]);
             cpass.dispatch_workgroups(self.width/work_group_size, self.height/work_group_size, 1);
@@ -1497,7 +1504,7 @@ impl DiffusePipelineStage
     {
 
         let diffuse_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: None,
+            label: Some("diffuse stage shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("diffuse.wgsl"))),
         });
 
@@ -1555,7 +1562,7 @@ impl DiffusePipelineStage
                         count: None,
                     },
                 ],
-                label: None,
+                label: Some("diffuse bind group layout"),
             });
 
         let mut diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -1592,7 +1599,7 @@ impl DiffusePipelineStage
                     )
                 },
             ],
-            label: None,
+            label: Some("diffuse bind group"),
         });
 
         let diffuse_pipeline_layout =
@@ -1607,6 +1614,8 @@ impl DiffusePipelineStage
             layout: Some(&diffuse_pipeline_layout),
             module: &diffuse_shader,
             entry_point: "main",
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            cache: None,
         });
 
         DiffusePipelineStage{
@@ -1633,7 +1642,7 @@ impl ExecutableStage for DiffusePipelineStage
         {
             // compute pass
             let mut cpass =
-                command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
+                command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("diffuse compute pass"), timestamp_writes: None });
             cpass.set_pipeline(&self.pipeline);
             cpass.set_bind_group(0, &self.bind_group, &[]);
             cpass.dispatch_workgroups(self.width/work_group_size, self.height/work_group_size, 1);
@@ -1663,7 +1672,7 @@ impl UpdateAgentsPipelineStage
     ) -> UpdateAgentsPipelineStage
     {
         let compute_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: None,
+            label: Some("update agents compute shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("compute.wgsl"))),
         });
 
@@ -1747,7 +1756,7 @@ impl UpdateAgentsPipelineStage
                         count: None,
                     },
                 ],
-                label: None,
+                label: Some("update agents bind group layout"),
             });
 
         let mut update_bind_groups = Vec::<wgpu::BindGroup>::new();
@@ -1798,7 +1807,7 @@ impl UpdateAgentsPipelineStage
                         )
                     },
                 ],
-                label: None,
+                label: Some("update agents bind group"),
             }));
         }
 
@@ -1814,6 +1823,8 @@ impl UpdateAgentsPipelineStage
             layout: Some(&update_agents_pipeline_layout),
             module: &compute_shader,
             entry_point: "main",
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            cache: None,
         });
 
         UpdateAgentsPipelineStage{
@@ -1838,7 +1849,7 @@ impl ExecutableStage for UpdateAgentsPipelineStage
         {
             // compute pass
             let mut cpass =
-                command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: None });
+                command_encoder.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("update agents compute pass"), timestamp_writes: None });
             cpass.set_pipeline(&self.pipeline);
             cpass.set_bind_group(0, &self.bind_groups[frame_num % 2], &[]);
             cpass.dispatch_workgroups(shared_buffers.sim_param_data.num_agents/128 + 1, 1, 1);
@@ -1867,7 +1878,7 @@ impl RenderPipelineStage
     ) -> RenderPipelineStage
     {
         let draw_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: None,
+            label: Some("draw shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("draw.wgsl"))),
         });
         
@@ -1918,7 +1929,7 @@ impl RenderPipelineStage
                         count: None,
                     },
                 ],
-                label: None,
+                label: Some("render stage bind group layout"),
             });
 
         let render_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -1949,7 +1960,7 @@ impl RenderPipelineStage
                     )
                 },
             ],
-            label: None,
+            label: Some("render stage bind group"),
         });
 
         let render_pipeline_layout =
@@ -1960,7 +1971,7 @@ impl RenderPipelineStage
             });
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: None,
+            label: Some("RenderPipelineStage"),
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &draw_shader,
@@ -1977,16 +1988,19 @@ impl RenderPipelineStage
                         attributes: &wgpu::vertex_attr_array![2 => Float32x2],
                     },
                 ],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &draw_shader,
                 entry_point: "main_fs",
                 targets: &[Some(config.view_formats[0].into())],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
+            cache: None,
         });
 
         RenderPipelineStage{
@@ -2015,13 +2029,15 @@ impl RenderableStage for RenderPipelineStage
                 // Not clearing here in order to test wgpu's zero texture initialization on a surface texture.
                 // Users should avoid loading uninitialized memory since this can cause additional overhead.
                 load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                store: true,
+                store: wgpu::StoreOp::Store,
             },
         })];
         let render_pass_descriptor = wgpu::RenderPassDescriptor {
-            label: None,
+            label: Some("RenderableStage"),
             color_attachments: &color_attachments,
             depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
         };
 
         command_encoder.push_debug_group("render view");

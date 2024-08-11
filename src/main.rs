@@ -47,6 +47,7 @@ fn main() {
 #[cfg(not(target_arch = "wasm32"))]
         framework::run::<test_runner::OnlineTestRunner>("Physarum", (logical_width, logical_height));
     } else {
+#[cfg(not(target_arch = "wasm32"))]
         framework::run::<Simulation>("Physarum", (logical_width, logical_height));
     }
 
