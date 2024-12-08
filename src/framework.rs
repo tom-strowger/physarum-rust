@@ -1,3 +1,6 @@
+// This file was originally part of the WGPU project (https://github.com/gfx-rs/wgpu) and 
+// has been copied from that repository and modified since. 
+
 use std::sync::Arc;
 use std::cell::RefCell;
 

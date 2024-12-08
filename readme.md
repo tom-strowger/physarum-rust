@@ -1,7 +1,15 @@
 
-# Physarum simulation
+# Physarum WGPU simulation
 
-## Prerequisites
+This project implements a physarum slime mold simulation using Rust and WGPU. There are many descriptions of this algorithm available online, for further reading I recommend:
+- [Characteristics of pattern formation and evolution in approximations of physarum transport networks](https://uwe-repository.worktribe.com/output/980579/characteristics-of-pattern-formation-and-evolution-in-approximations-of-physarum-transport-networks)
+                - a paper describing the operation of the simulation.
+- [Sage Jenson's work </a>
+                on a physarum simulation.](https://cargocollective.com/sagejenson/physarum)
+
+![main image](images/1.png)
+
+## Setup
 - Rust is installed and `cargo` is available in the path
   - wasm-pack is install via cargo (works for Mac ARM vs npm)
     `cargo install wasm-pack`
@@ -23,15 +31,18 @@
   - `decay` float
   - `deposit` float
   - `running` bool
+  - `extra_controls` bool
 
 e.g. <localhost:8080?fg_colour=EEFF89&bg_colour=4599AA&width=400&height=400>
 
-## Data:
+## Compute pipeline overview
+
+### Shared data
 - Agents (positions + headings).  Access by index.  Double-buffered
 - Chemo 2d texture.  Accessed by x,y position. Double-buffered
 - New dots 2d texture representing the agent positions with a dot drawn at each.
 
-## Stages
+### Stages
 
 1. Draw positions - render pipeline
    - Input: Agents[A]
@@ -54,7 +65,7 @@ e.g. <localhost:8080?fg_colour=EEFF89&bg_colour=4599AA&width=400&height=400>
 swap A & B each frame
 
 
-## Todo:
+## Todo
 - Add an input 2d texture which can be used to weight towards regions etc. Ideas:
   - A layer which modifies the decay (e.g. for topology)
   - A layer which has adds a constant chemo to an area (cornflake)

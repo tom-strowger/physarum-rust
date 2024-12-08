@@ -1,0 +1,6 @@
+This project includes code from the following sources:
+
+1. wgpu - https://github.com/gfx-rs/wgpu
+   Licensed under MIT or Apache License.
+
+See the LICENSE file in the repository for the full terms of the license.
