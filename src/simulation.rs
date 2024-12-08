@@ -1,14 +1,9 @@
 
-// use pipeline;
 use crate::pipeline::{
     PipelineConfiguration,
     Pipeline,
 };
 
-///
-/// This application is built upon a wgpu example, thus the Example struct
-/// 
-/// 
 use winit::{
     event::{self, WindowEvent}, keyboard::Key};
 
@@ -102,6 +97,7 @@ pub fn send_event(event: AppEvent) -> Result<(), JsError>{
     Ok(())
 }
 
+// This project is built upon a wgpu example
 impl framework::Example for Simulation {
     type ExampleUserEvent = AppEvent;
     

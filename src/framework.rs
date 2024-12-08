@@ -532,16 +532,6 @@ async fn start<E: Example>(title: &str,
     );
 }
 
-// pub fn run<E: Example>(title: &'static str) {
-//     cfg_if::cfg_if! {
-//         if #[cfg(target_arch = "wasm32")] {
-//             wasm_bindgen_futures::spawn_local(async move { start::<E>(title).await })
-//         } else {
-//             pollster::block_on(start::<E>(title));
-//         }
-//     }
-// }
-
 #[cfg(not(target_arch = "wasm32"))]
 pub fn run<E: Example>(title: &str, logical_size: (u32, u32)) {
     pollster::block_on(start::<E>(title, logical_size));

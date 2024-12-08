@@ -1,10 +1,5 @@
 use std::env;
 
-
-///
-/// This application is built upon a wgpu example, thus the Example struct
-/// 
-/// 
 mod pipeline;
 
 mod framework;
@@ -18,7 +13,6 @@ mod test_runner;
 
 use env_logger;
 
-/// run example
 fn main() {
     env_logger::init();
 
