@@ -1,13 +1,17 @@
 
 # Physarum WGPU simulation
 
-This project implements a physarum slime mold simulation using Rust and WGPU. There are many descriptions of this algorithm available online, for further reading I recommend:
+This project implements a physarum slime mold simulation using Rust and WGPU.
+
+![main image](images/1.png)
+
+If your browser supports WebGPU you can play with the project [here](https://tom-strowger.github.io/physarum-rust/index.html). Currently it just works on Chrome on Desktop, some other browsers may have developer settings to enable WebGPU support.
+
+There are many descriptions of this algorithm available online, for further reading I recommend:
 - [Characteristics of pattern formation and evolution in approximations of physarum transport networks](https://uwe-repository.worktribe.com/output/980579/characteristics-of-pattern-formation-and-evolution-in-approximations-of-physarum-transport-networks)
                 - a paper describing the operation of the simulation.
 - [Sage Jenson's work </a>
                 on a physarum simulation.](https://cargocollective.com/sagejenson/physarum)
-
-![main image](images/1.png)
 
 ## Setup
 - Rust is installed and `cargo` is available in the path
